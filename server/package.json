@@ -1,0 +1,11 @@
+{
+  "name": "crm-fotografico-server",
+  "version": "1.0.0",
+  "description": "Backend del CRM Fotográfico",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "private": true
+}
