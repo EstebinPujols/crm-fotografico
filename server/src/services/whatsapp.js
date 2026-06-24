@@ -251,6 +251,58 @@ async function start() {
   state.lastError = null;
   _emitStatus();
 
+  // ─── Resolver LID → teléfono vía USync ───────────────────────────────────
+  async function resolveLidToPhone(lidJid) {
+    try {
+      const { USyncQuery, USyncUser } = require('@whiskeysockets/baileys/lib/WAUSync');
+      const query = new USyncQuery()
+        .withContext('background')
+        .withLIDProtocol()
+        .withContactProtocol()
+        .withUser(new USyncUser().withId(lidJid));
+
+      const userNodes = query.users.map(user => ({
+        tag: 'user',
+        attrs: {},
+        content: query.protocols.map(a => a.getUserElement(user)).filter(a => a !== null),
+      }));
+      const iq = {
+        tag: 'iq',
+        attrs: { to: 's.whatsapp.net', type: 'get', xmlns: 'usync' },
+        content: [{
+          tag: 'usync',
+          attrs: { context: 'background', mode: 'query', last: 'true', index: '0' },
+          content: [
+            { tag: 'query', attrs: {}, content: query.protocols.map(a => a.getQueryElement()) },
+            { tag: 'list', attrs: {}, content: userNodes },
+          ],
+        }],
+      };
+
+      const result = await sock.query(iq);
+      const parsed = query.parseUSyncQueryResult(result);
+      if (parsed?.list?.length) {
+        for (const item of parsed.list) {
+          if (item.contact && item.id) {
+            const phone = item.id.split('@')[0]?.replace(/[^0-9]/g, '');
+            if (phone && phone.length >= 10) {
+              console.log('[WhatsApp] LID resuelto vía USync:', lidJid, '→', phone);
+              state.lidToPhone.set(lidJid, phone);
+              state.phoneToLid.set(phone, lidJid);
+              saveLidCache();
+              return phone;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[WhatsApp] Error resolviendo LID vía USync:', e.message);
+    }
+    return null;
+  }
+
+  state.resolveLidToPhone = resolveLidToPhone;
+
   // ─── QR + Conexión ──────────────────────────────────────────────────────────
   sock.ev.on('connection.update', async ({ qr, connection, lastDisconnect }) => {
     if (qr) {
@@ -338,6 +390,7 @@ async function start() {
 
   // ─── Contactos: caché LID → teléfono ──────────────────────────────────────────
   const updateContactCache = (contacts) => {
+    console.log('[WhatsApp] contacts.upsert/update:', contacts.length, 'contactos');
     let hasNewMapping = false;
     for (const c of contacts) {
       // Caso: contacto con lid + id tradicional → tenemos el mapeo
@@ -346,13 +399,23 @@ async function start() {
         if (phone && phone.length >= 10) {
           const lidNorm = jidNormalizedUser(c.lid);
           const idNorm = jidNormalizedUser(c.id);
+          console.log('[WhatsApp] Mapeo LID:', lidNorm, '→', phone);
           state.lidToPhone.set(lidNorm, phone);
           state.lidToPhone.set(idNorm, phone);
           state.phoneToLid.set(phone, lidNorm);
           saveLidCache();
           hasNewMapping = true;
+        } else {
+          console.log('[WhatsApp] LID sin phone:', c.lid, '→', phone || 'inválido');
         }
+      } else if (c.lid && !c.id) {
+        console.log('[WhatsApp] Contacto solo LID (sin id):', jidNormalizedUser(c.lid));
+      } else if (c.id && !c.lid) {
+        // Contacto tradicional sin LID — no nos interesa
       }
+    }
+    if (contacts.length > 0) {
+      console.log('[WhatsApp] Contactos recibidos — primer contacto:', JSON.stringify(contacts[0]).slice(0, 200));
     }
 
     // ★ Retroactivo: actualizar mensajes existentes que ahora tienen resolución
@@ -407,7 +470,15 @@ async function start() {
       }
 
       const jid = msg.key.remoteJid || '';
-      const phone = resolvePhone(jid);
+      let phone = resolvePhone(jid);
+
+      // ★ Si es LID no resuelto, intentar resolverlo vía USync
+      if (!phone || (jid.includes('@lid') && phone.length >= 13 && !state.lidToPhone.has(jid))) {
+        try {
+          const resolved = await resolveLidToPhone(jid);
+          if (resolved) phone = resolved;
+        } catch (_) {}
+      }
 
       if (!phone) continue;
 

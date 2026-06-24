@@ -4,6 +4,7 @@ node_modules
 dist
 .vite
 whatsapp_auth/
-uploads/*
-!uploads/.gitkeep
+# Excluir contenido de uploads pero mantener estructura de directorios
+uploads/**/*
+!uploads/**/.gitkeep
 *.local

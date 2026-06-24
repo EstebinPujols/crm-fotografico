@@ -1,0 +1,18 @@
+{
+  "4164bcba-5e2e-4089-bcad-2854d2350a69": {
+    "type": "image",
+    "url": "/uploads/whatsapp/images/ca208a87-87b1-4e42-83d4-22c1385285ad.jpeg",
+    "mime": "image/jpeg",
+    "filename": "media_53367682.jpeg",
+    "size": 237790,
+    "caption": "Si, todo perfecto"
+  },
+  "480c7e7e-89c0-43aa-934d-1ac313ccac05": {
+    "type": "audio",
+    "url": "/uploads/whatsapp/audios/795ac750-af7b-4eb5-a220-3be605ae6d55.ogg",
+    "mime": "audio/ogg; codecs=opus",
+    "filename": "media_63053c11.ogg",
+    "size": 5069,
+    "caption": ""
+  }
+}
