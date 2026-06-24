@@ -260,52 +260,26 @@ async function start() {
   state.lastError = null;
   _emitStatus();
 
-  // ─── Resolver LID → teléfono vía USync ───────────────────────────────────
+  // ─── Resolver LID → teléfono vía signalRepository.lidMapping ───────────────
   async function resolveLidToPhone(lidJid) {
     try {
-      const { USyncQuery, USyncUser } = require('@whiskeysockets/baileys/lib/WAUSync');
-      const query = new USyncQuery()
-        .withContext('background')
-        .withLIDProtocol()
-        .withContactProtocol()
-        .withUser(new USyncUser().withId(lidJid));
-
-      const userNodes = query.users.map(user => ({
-        tag: 'user',
-        attrs: {},
-        content: query.protocols.map(a => a.getUserElement(user)).filter(a => a !== null),
-      }));
-      const iq = {
-        tag: 'iq',
-        attrs: { to: 's.whatsapp.net', type: 'get', xmlns: 'usync' },
-        content: [{
-          tag: 'usync',
-          attrs: { context: 'background', mode: 'query', last: 'true', index: '0' },
-          content: [
-            { tag: 'query', attrs: {}, content: query.protocols.map(a => a.getQueryElement()) },
-            { tag: 'list', attrs: {}, content: userNodes },
-          ],
-        }],
-      };
-
-      const result = await sock.query(iq);
-      const parsed = query.parseUSyncQueryResult(result);
-      if (parsed?.list?.length) {
-        for (const item of parsed.list) {
-          if (item.contact && item.id) {
-            const phone = item.id.split('@')[0]?.replace(/[^0-9]/g, '');
-            if (phone && phone.length >= 10) {
-              console.log('[WhatsApp] LID resuelto vía USync:', lidJid, '→', phone);
-              state.lidToPhone.set(lidJid, phone);
-              state.phoneToLid.set(phone, lidJid);
-              saveLidCache();
-              return phone;
-            }
-          }
+      if (!sock.signalRepository?.lidMapping) {
+        console.warn('[WhatsApp] signalRepository.lidMapping no disponible');
+        return null;
+      }
+      const pn = await sock.signalRepository.lidMapping.getPNForLID(lidJid);
+      if (pn) {
+        const phone = pn.split('@')[0]?.replace(/[^0-9]/g, '');
+        if (phone && phone.length >= 10) {
+          console.log('[WhatsApp] LID resuelto vía signalRepository:', lidJid, '→', phone);
+          state.lidToPhone.set(lidJid, phone);
+          state.phoneToLid.set(phone, lidJid);
+          saveLidCache();
+          return phone;
         }
       }
     } catch (e) {
-      console.error('[WhatsApp] Error resolviendo LID vía USync:', e.message);
+      console.error('[WhatsApp] Error resolviendo LID vía signalRepository:', e.message);
     }
     return null;
   }
@@ -336,6 +310,7 @@ async function start() {
       // ★ Escanear LIDs pendientes en BD al reconectar
       setTimeout(async () => {
         try {
+          // Escanear LIDs cacheados y actualizar DB
           for (const [lidJid, phone] of state.lidToPhone.entries()) {
             if (!lidJid.includes('@lid')) continue;
             const lidDigits = lidJid.replace('@lid', '').replace(/[^0-9]/g, '');
@@ -352,6 +327,38 @@ async function start() {
               console.log(`[WhatsApp] Startup: LID ${lidDigits} → ${phone}, ${msgs.length} msgs actualizados`);
             }
           }
+
+          // Consultar signalRepository para todo LID no resuelto en la BD
+          // Buscar mensajes cuyo phone tenga @lid (formato LID JID)
+          const { data: lidMsgs } = await db
+            .from('whatsapp_messages')
+            .select('phone')
+            .like('phone', '%@lid')
+            .order('created_at', { ascending: false })
+            .limit(50);
+          const seen = new Set();
+          for (const m of lidMsgs || []) {
+            const raw = (m.phone || '').includes('@') ? m.phone : `${m.phone}@lid`;
+            if (seen.has(raw) || state.lidToPhone.has(raw)) continue;
+            seen.add(raw);
+            try {
+              const pn = await sock.signalRepository?.lidMapping?.getPNForLID(raw);
+              if (pn) {
+                const phoneDigits = pn.split('@')[0]?.replace(/[^0-9]/g, '');
+                if (phoneDigits && phoneDigits.length >= 10) {
+                  state.lidToPhone.set(raw, phoneDigits);
+                  state.phoneToLid.set(phoneDigits, raw);
+                  await db.from('whatsapp_messages')
+                    .update({ phone: phoneDigits })
+                    .or(`phone.eq.${m.phone},phone.eq.${raw}`);
+                  console.log('[WhatsApp] LID resuelto en startup via signalRepo:', raw, '→', phoneDigits);
+                }
+              }
+            } catch (e) {
+              // ignorar — signalRepository puede no tener aún el mapeo
+            }
+          }
+          saveLidCache();
         } catch (e) {
           console.error('[WhatsApp] Error en scan startup:', e.message);
         }

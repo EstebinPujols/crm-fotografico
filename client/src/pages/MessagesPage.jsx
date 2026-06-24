@@ -476,7 +476,7 @@ export default function MessagesPage() {
   return (
     <>
       <DeleteConfirm />
-      <div className="flex h-full overflow-hidden bg-surface rounded-xl border border-[#E5E5E5]">
+      <div className="flex h-[calc(100vh-5rem)] overflow-hidden bg-surface rounded-xl border border-[#E5E5E5]">
       <ConvSidebar />
       <MsgPanel />
     </div>

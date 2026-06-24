@@ -487,13 +487,26 @@ router.post('/lid/resolve', async (req, res, next) => {
       return res.status(400).json({ error: 'Número de teléfono inv\u00e1lido' });
     }
 
-    // 1. Actualizar caché en memoria (ambas direcciones) y persistir
+    // 1. Notificar a signalRepository de Baileys
     const normLid = lid.includes('@') ? lid : `${lid}@lid`;
+    const phoneJid = `${cleanPhone}@s.whatsapp.net`;
+    if (whatsapp.state._sock?.signalRepository?.lidMapping) {
+      try {
+        await whatsapp.state._sock.signalRepository.lidMapping.storeLIDPNMappings([
+          { lid: normLid, pn: phoneJid },
+        ]);
+        console.log('[LID] Mapeo almacenado en signalRepository:', normLid, '→', phoneJid);
+      } catch (e) {
+        console.warn('[LID] Error en signalRepository.storeLIDPNMappings:', e.message);
+      }
+    }
+
+    // 2. Actualizar caché en memoria (ambas direcciones) y persistir
     whatsapp.state.lidToPhone.set(normLid, cleanPhone);
     whatsapp.state.phoneToLid.set(cleanPhone, normLid);
     if (typeof whatsapp.saveLidCache === 'function') whatsapp.saveLidCache();
 
-    // 2. Actualizar mensajes existentes en la BD
+    // 3. Actualizar mensajes existentes en la BD
     const { error: errUpdate } = await db
       .from('whatsapp_messages')
       .update({ phone: cleanPhone })
@@ -509,7 +522,7 @@ router.post('/lid/resolve', async (req, res, next) => {
       console.log(`[LID] ${normLid} resuelto a ${cleanPhone}, ${count} mensajes actualizados`);
     }
 
-    // 3. También actualizar si había sin @lid
+    // 4. También actualizar si había sin @lid
     const lidUser = normLid.split('@')[0];
     const { error: errUpdate2 } = await db
       .from('whatsapp_messages')
