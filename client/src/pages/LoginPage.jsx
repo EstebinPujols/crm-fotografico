@@ -1,5 +1,74 @@
+/**
+ * ═══════════════════════════════════════════════
+ *  LoginPage.jsx — PÁGINA DE INICIO DE SESIÓN
+ * ═══════════════════════════════════════════════
+ *
+ *  🎯 TU TAREA: Completar el manejador handleSubmit
+ *
+ *  Esta página muestra el formulario de login. Cuando el usuario
+ *  hace clic en "Iniciar Sesión", debe:
+ *    1. Llamar a la función login() de authService
+ *    2. Si funciona, redirigir a /home
+ *    3. Si falla, mostrar el error
+ *
+ *  📚 LO QUE NECESITAS SABER:
+ *
+ *  - useState es un Hook de React para guardar estados
+ *    const [estado, setEstado] = useState(valorInicial)
+ *
+ *  - useNavigate es un Hook de React Router para navegar
+ *    const navigate = useNavigate()
+ *    navigate('/ruta') → redirige a esa ruta
+ *
+ *  - Ya tengo las variables de estado listas:
+ *    • email / setEmail — lo que escribe el usuario en el campo email
+ *    • password / setPassword — lo que escribe el usuario en password
+ *    • error / setError — mensaje de error a mostrar
+ *    • loading / setLoading — true mientras se procesa el login
+ *
+ *  - El formulario ya llama a handleSubmit cuando se envía
+ *
+ *  🔍 PISTAS para handleSubmit:
+ *
+ *    1. Prevenir el envío normal del formulario:
+ *       e.preventDefault()
+ *
+ *    2. Limpiar errores anteriores:
+ *       setError('')
+ *
+ *    3. Validar que los campos no estén vacíos:
+ *       if (!email.trim() || !password.trim()) {
+ *         setError('Completa todos los campos')
+ *         return
+ *       }
+ *
+ *    4. Poner loading en true:
+ *       setLoading(true)
+ *
+ *    5. Encerrar en try/catch:
+ *       try {
+ *         const result = await login(email, password)
+ *         navigate('/home')
+ *       } catch (err) {
+ *         setError(err.message || 'Error al iniciar sesión')
+ *       } finally {
+ *         setLoading(false)  // Esto se ejecuta SIEMPRE, fallo o éxito
+ *       }
+ *
+ *  ⚠️ ERRORES COMUNES DE NOVATO:
+ *  - Olvidar e.preventDefault() — el formulario recarga la página
+ *  - Poner setLoading(false) solo en un sitio — si hay error, se queda cargando
+ *  - No poner await antes de login() — la promesa no se resuelve
+ *  - Olvidar importar login desde authService
+ *
+ * ─────────────────────────────────────────────
+ *  ¡Manos a la obra! Escribe tu código abajo 👇
+ * ─────────────────────────────────────────────
+ */
+
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { login } from '../services/authService';
 
 function LoginPage() {
   const [email, setEmail] = useState('');
@@ -8,27 +77,27 @@ function LoginPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
     if (!email.trim() || !password.trim()) {
-      setError('Por favor, completa todos los campos.');
+      setError('Completa todos los campos');
       return;
     }
 
     setLoading(true);
-
-    // Simulación de autenticación
-    setTimeout(() => {
-      if (email === 'demo@example.com' && password === 'password123') {
-        navigate('/home');
-      } else {
-        setError('Credenciales inválidas. Intenta de nuevo.');
-        setLoading(false);
-      }
-    }, 1000);
+    try {
+      await login(email, password);
+      navigate('/home');
+    } catch (err) {
+      setError(err.message || 'Credenciales inválidas. Intenta de nuevo.');
+    } finally {
+      setLoading(false);
+    }
   };
+
+  // ─── EL RESTO DEL CÓDIGO ES LA INTERFAZ — NO TOCAR ───
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#f9f9f9] px-4">
@@ -119,14 +188,6 @@ function LoginPage() {
           </svg>
           Google
         </button>
-
-        {/* Link a registro */}
-        <p className="mt-6 text-center text-sm text-on-surface-variant">
-          ¿No tienes cuenta?{' '}
-          <Link to="/register" className="text-[#735c00] font-semibold hover:underline">
-            Regístrate
-          </Link>
-        </p>
       </div>
     </div>
   );

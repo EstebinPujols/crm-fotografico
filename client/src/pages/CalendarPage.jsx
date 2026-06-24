@@ -1,23 +1,39 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import Button from '../components/Button';
+import appointmentService from '../services/appointmentService';
+import clientService from '../services/clientService';
 
 const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 const DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-const TYPES = ['boda', 'retrato', 'evento', 'reunion', 'entrega'];
-const TYPE_LABELS = { boda: 'Boda', retrato: 'Retrato', evento: 'Evento', reunion: 'Reunión', entrega: 'Entrega' };
-const TYPE_COLORS = { boda: 'bg-[#735c00]', retrato: 'bg-blue-500', evento: 'bg-purple-500', reunion: 'bg-green-500', entrega: 'bg-orange-500' };
 
-const DEMO_EVENTS = [
-  { id: 1, date: 2, title: 'Boda María & Carlos', type: 'boda', time: '10:00', location: 'Playa Bonita', notes: '' },
-  { id: 2, date: 5, title: 'Sesión Retratos — Vance', type: 'retrato', time: '15:00', location: 'Estudio', notes: '' },
-  { id: 3, date: 10, title: 'Graduación UASD', type: 'evento', time: '09:00', location: 'Campus UASD', notes: '' },
-  { id: 4, date: 10, title: 'Revisión de cartera', type: 'reunion', time: '14:00', location: 'Oficina', notes: '' },
-  { id: 5, date: 15, title: 'Entrega de álbum — Gómez', type: 'entrega', time: '16:00', location: 'Estudio', notes: '' },
-  { id: 6, date: 18, title: 'Llamada con cliente nuevo', type: 'reunion', time: '10:00', location: 'Virtual', notes: '' },
-  { id: 7, date: 20, title: 'Sesión Family — Torres', type: 'retrato', time: '14:30', location: 'Parque Central', notes: '' },
-  { id: 8, date: 22, title: 'TechConf — Cobertura', type: 'evento', time: '08:00', location: 'Centro de Convenciones', notes: '' },
-  { id: 9, date: 28, title: 'Shoot Publicitario — Marca X', type: 'evento', time: '07:00', location: 'Locación externa', notes: '' },
-];
+// Mapeo de session_type a colores/labels de UI
+const TYPE_COLORS = {
+  boda: 'bg-[#735c00]',
+  retrato: 'bg-blue-500',
+  evento: 'bg-purple-500',
+  reunion: 'bg-green-500',
+  entrega: 'bg-orange-500',
+  quinceañera: 'bg-pink-500',
+  familia: 'bg-teal-500',
+  other: 'bg-gray-400',
+};
+
+const STATUS_CONFIG = {
+  pendiente: { label: 'Pendiente', bg: 'bg-yellow-50', text: 'text-yellow-700' },
+  confirmada: { label: 'Confirmada', bg: 'bg-green-50', text: 'text-green-700' },
+  en_proceso: { label: 'En proceso', bg: 'bg-blue-50', text: 'text-blue-700' },
+  completada: { label: 'Completada', bg: 'bg-gray-100', text: 'text-gray-600' },
+  cancelada: { label: 'Cancelada', bg: 'bg-red-50', text: 'text-red-600' },
+};
+
+function getTypeColor(sessionType) {
+  if (!sessionType) return 'bg-gray-400';
+  const lc = sessionType.toLowerCase();
+  for (const key of Object.keys(TYPE_COLORS)) {
+    if (lc.includes(key)) return TYPE_COLORS[key];
+  }
+  return TYPE_COLORS.other;
+}
 
 function buildDays(year, month) {
   const first = new Date(year, month, 1).getDay();
@@ -31,47 +47,298 @@ function buildDays(year, month) {
   return r;
 }
 
+// ─── Modal de Cita ────────────────────────────────────────────────────────────
+
+function AppointmentModal({ mode, data, clients, defaultDate, defaultTime, onClose, onSaved, onPastDateSuggestion }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    const fd = new FormData(e.target);
+    const payload = {
+      client_id: fd.get('client_id'),
+      date: fd.get('date'),
+      time: fd.get('time'),
+      location: fd.get('location')?.trim() || null,
+      session_type: fd.get('session_type')?.trim() || null,
+      notes: fd.get('notes')?.trim() || null,
+    };
+    if (mode !== 'create') {
+      payload.status = fd.get('status');
+    }
+    try {
+      if (mode === 'create') {
+        await appointmentService.create(payload);
+      } else {
+        await appointmentService.update(data.id, payload);
+      }
+      onSaved();
+      onClose();
+    } catch (err) {
+      const errMsg = err.response?.data?.error || err.response?.data?.errors?.[0]?.msg || '';
+      // Si el error es por fecha/hora pasada, activar flujo de sugerencia
+      if (errMsg.includes('pasado') || errMsg.includes('ya pasó')) {
+        if (onPastDateSuggestion) {
+          onPastDateSuggestion(payload);
+        }
+        // No llamamos onClose() — el padre cierra el modal en handlePastDateSuggestion
+        // sin borrar pendingFormData
+      } else {
+        setError(errMsg || 'Error al guardar la cita');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setLoading(true);
+    try {
+      await appointmentService.delete(data.id);
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al eliminar la cita');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl border border-[#E5E5E5] p-6 max-w-lg w-full shadow-lg animate-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <h4 className="text-headline-md font-semibold text-primary">
+            {mode === 'create' ? 'Nueva Cita' : 'Editar Cita'}
+          </h4>
+          <button type="button" onClick={onClose} className="material-symbols-outlined text-on-surface-variant hover:text-primary cursor-pointer">
+            close
+          </button>
+        </div>
+
+        {error && (
+          <div className="mb-4 flex items-center gap-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100">
+            <span className="material-symbols-outlined text-sm">error</span>
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Cliente */}
+          <div>
+            <label className="text-xs font-semibold text-on-surface-variant block mb-1.5">
+              Cliente <span className="text-red-400">*</span>
+            </label>
+            <select
+              name="client_id"
+              required
+              defaultValue={data?.client_id || ''}
+              className="w-full h-10 px-3 rounded-xl border border-[#E5E5E5] text-sm focus:outline-none focus:ring-2 focus:ring-[#fed65b] bg-white"
+            >
+              <option value="">Selecciona un cliente…</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.first_name} {c.last_name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Fecha y hora */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant block mb-1.5">
+                Fecha <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="date"
+                name="date"
+                required
+                defaultValue={data?.date || defaultDate || ''}
+                className="w-full h-10 px-3 rounded-xl border border-[#E5E5E5] text-sm focus:outline-none focus:ring-2 focus:ring-[#fed65b]"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant block mb-1.5">
+                Hora <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="time"
+                name="time"
+                required
+                defaultValue={data?.time?.slice(0, 5) || defaultTime || '09:00'}
+                className="w-full h-10 px-3 rounded-xl border border-[#E5E5E5] text-sm focus:outline-none focus:ring-2 focus:ring-[#fed65b]"
+              />
+            </div>
+          </div>
+
+          {/* Tipo y ubicación */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant block mb-1.5">Tipo de sesión</label>
+              <input
+                name="session_type"
+                placeholder="Boda, Retrato, Evento…"
+                defaultValue={data?.session_type || ''}
+                className="w-full h-10 px-3 rounded-xl border border-[#E5E5E5] text-sm focus:outline-none focus:ring-2 focus:ring-[#fed65b]"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant block mb-1.5">Ubicación</label>
+              <input
+                name="location"
+                placeholder="Estudio, playa…"
+                defaultValue={data?.location || ''}
+                className="w-full h-10 px-3 rounded-xl border border-[#E5E5E5] text-sm focus:outline-none focus:ring-2 focus:ring-[#fed65b]"
+              />
+            </div>
+          </div>
+
+          {/* Estado (solo en edición) */}
+          {mode === 'edit' && (
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant block mb-1.5">Estado</label>
+              <select
+                name="status"
+                defaultValue={data?.status || 'pendiente'}
+                className="w-full h-10 px-3 rounded-xl border border-[#E5E5E5] text-sm focus:outline-none focus:ring-2 focus:ring-[#fed65b] bg-white"
+              >
+                {Object.entries(STATUS_CONFIG).map(([val, cfg]) => (
+                  <option key={val} value={val}>{cfg.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Notas */}
+          <div>
+            <label className="text-xs font-semibold text-on-surface-variant block mb-1.5">Notas</label>
+            <textarea
+              name="notes"
+              defaultValue={data?.notes || ''}
+              placeholder="Detalles adicionales…"
+              rows={3}
+              className="w-full px-3 py-2 rounded-xl border border-[#E5E5E5] text-sm focus:outline-none focus:ring-2 focus:ring-[#fed65b] resize-none"
+            />
+          </div>
+
+          {/* Acciones */}
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#E5E5E5]">
+            <div>
+              {mode === 'edit' && (
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={loading}
+                  className="h-10 px-4 rounded-xl text-sm font-semibold text-red-600 hover:bg-red-50 transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-[16px]">delete</span>
+                  Eliminar
+                </button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? (
+                  <><span className="material-symbols-outlined animate-spin text-[16px]">sync</span> Guardando…</>
+                ) : (
+                  <>{mode === 'create' ? 'Crear Cita' : 'Guardar Cambios'}</>
+                )}
+              </Button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Componente Principal ─────────────────────────────────────────────────────
+
 export default function CalendarPage() {
   const today = new Date();
-  const [events, setEvents] = useState([]);
-  const [daysOff, setDaysOff] = useState([]);
+  const [appointments, setAppointments] = useState([]);
+  const [clients, setClients] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [selected, setSelected] = useState(null);
-  const [showNewModal, setShowNewModal] = useState(false);
-  const [showDayOffModal, setShowDayOffModal] = useState(false);
-  const [showNextSlot, setShowNextSlot] = useState(false);
-  const [editingEvent, setEditingEvent] = useState(null);
-  const [removingEvents, setRemovingEvents] = useState(new Set());
-
-  // Form state
-  const emptyForm = { title: '', date: '', time: '09:00', location: '', type: 'boda', notes: '' };
-  const [form, setForm] = useState({ ...emptyForm });
+  const [searchingSlot, setSearchingSlot] = useState(false);
+  const [modal, setModal] = useState({ open: false, mode: 'create', data: null, defaultDate: null, defaultTime: null });
+  const [suggestion, setSuggestion] = useState(null); // { date, time } cuando se busca espacio
+  const [pendingFormData, setPendingFormData] = useState(null); // datos parciales de un intento fallido
 
   const days = buildDays(year, month);
   const isToday = (d, cur) => cur && d === today.getDate() && month === today.getMonth() && year === today.getFullYear();
-  const selectedEvents = selected ? events.filter((e) => e.date === selected) : [];
 
-  // Next available slot
-  const nextAvailable = useMemo(() => {
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    for (let d = today.getDate(); d <= daysInMonth; d++) {
-      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      if (daysOff.includes(dateStr)) continue;
-      if (!events.some((e) => e.date === d)) {
-        return { day: d, month, year, label: `${d} de ${MONTHS[month]}` };
-      }
-      // Check if there's a free hour slot
-      const takenHours = events.filter((e) => e.date === d).map((e) => parseInt(e.time.split(':')[0]));
-      for (let h = 8; h <= 17; h++) {
-        if (!takenHours.includes(h)) return { day: d, month, year, label: `${d} de ${MONTHS[month]} a las ${String(h).padStart(2, '0')}:00`, hour: h };
+  // ─── Carga de datos ─────────────────────────────────────────────────────────
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      // Traer citas del mes actual + clientes (en paralelo)
+      const monthStr = String(month + 1).padStart(2, '0');
+      const dateFrom = `${year}-${monthStr}-01`;
+      const lastDay = new Date(year, month + 1, 0).getDate();
+      const dateTo = `${year}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
+
+      const [apptResult, clientResult] = await Promise.all([
+        appointmentService.getAll({ date_from: dateFrom, date_to: dateTo, limit: 200 }),
+        clientService.getAll({ limit: 200 }),
+      ]);
+
+      setAppointments(apptResult.data || []);
+      setClients(clientResult.data || []);
+    } catch (err) {
+      console.error('Error loading calendar data:', err);
+      setError('No se pudo cargar el calendario. Verifica que el servidor esté corriendo.');
+    } finally {
+      setLoading(false);
+    }
+  }, [year, month]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadData();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [loadData]);
+
+  // ─── Helpers ──────────────────────────────────────────────────────────────
+
+  // Convertir fecha de la API a número de día del mes
+  const getDay = (dateStr) => {
+    if (!dateStr) return null;
+    return parseInt(dateStr.split('-')[2]);
+  };
+
+  // Citas del día seleccionado
+  const selectedAppointments = useMemo(() => {
+    if (!selected) return [];
+    return appointments.filter((a) => getDay(a.date) === selected);
+  }, [appointments, selected]);
+
+  // Citas por día (para el calendario)
+  const appointmentsByDay = useMemo(() => {
+    const map = {};
+    for (const a of appointments) {
+      const d = getDay(a.date);
+      if (d) {
+        if (!map[d]) map[d] = [];
+        map[d].push(a);
       }
     }
-    return null;
-  }, [events, daysOff, month, year]);
+    return map;
+  }, [appointments]);
 
-  const loadDemo = () => { setEvents(DEMO_EVENTS.map((e) => ({ ...e, id: Date.now() + Math.random() }))); };
-  const clear = () => { setEvents([]); setDaysOff([]); setSelected(null); };
+  // ─── Navigation ──────────────────────────────────────────────────────────
+
   const nav = (dir) => {
     const m = month + dir;
     if (m < 0) { setMonth(11); setYear((y) => y - 1); }
@@ -80,249 +347,69 @@ export default function CalendarPage() {
     setSelected(null);
   };
 
-  const openNewEvent = (prefillDate) => {
-    const day = prefillDate || selected || today.getDate();
-    setForm({ ...emptyForm, date: `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` });
-    setEditingEvent(null);
-    setShowNewModal(true);
+  // ─── Modal helpers ────────────────────────────────────────────────────────
+
+  const openCreate = (day) => {
+    const d = day || selected || today.getDate();
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    setModal({ open: true, mode: 'create', data: null, defaultDate: dateStr, defaultTime: null });
   };
 
-  const openEditEvent = (evt) => {
-    setForm({
-      title: evt.title,
-      date: `${year}-${String(month + 1).padStart(2, '0')}-${String(evt.date).padStart(2, '0')}`,
-      time: evt.time,
-      location: evt.location || '',
-      type: evt.type,
-      notes: evt.notes || '',
-    });
-    setEditingEvent(evt);
-    setShowNewModal(true);
-  };
-
-  const saveEvent = () => {
-    if (!form.title.trim()) return;
-    const dateParts = form.date.split('-');
-    const day = parseInt(dateParts[2]);
-    if (editingEvent) {
-      setEvents((prev) => prev.map((e) => e.id === editingEvent.id ? { ...e, title: form.title, date: day, time: form.time, location: form.location, type: form.type, notes: form.notes } : e));
-    } else {
-      setEvents((prev) => [...prev, { id: Date.now(), title: form.title, date: day, time: form.time, location: form.location, type: form.type, notes: form.notes }]);
+  // Buscar el siguiente espacio disponible
+  const handleSearchSlot = async () => {
+    setSearchingSlot(true);
+    try {
+      const slot = await appointmentService.getNextAvailable();
+      // Mostrar sugerencia en vez de abrir el modal directamente
+      setSuggestion(slot);
+    } catch (err) {
+      alert(err.response?.data?.error || 'No se encontró espacio disponible');
+    } finally {
+      setSearchingSlot(false);
     }
-    setShowNewModal(false);
-    setEditingEvent(null);
   };
 
-  const deleteEvent = (id) => {
-    setEvents((prev) => prev.filter((e) => e.id !== id));
-  };
-
-  const toggleDayOff = (d) => {
-    const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    setDaysOff((prev) => prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]);
-  };
-
-  const toggleRemoving = (id) => {
-    setRemovingEvents((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
+  // Usar la sugerencia: abre el modal con la fecha/hora sugerida
+  const acceptSuggestion = () => {
+    if (!suggestion) return;
+    // Si hay datos pendientes (de un intento fallido), pasarlos como data
+    // para que el modal preserve cliente, tipo, notas, etc.
+    // Pero quitamos date/time del objeto para que la sugerencia tenga prioridad
+    const preserved = pendingFormData ? { ...pendingFormData } : null;
+    if (preserved) {
+      delete preserved.date;
+      delete preserved.time;
+    }
+    setModal({
+      open: true,
+      mode: 'create',
+      data: preserved,
+      defaultDate: suggestion.date,
+      defaultTime: suggestion.time,
     });
+    setSuggestion(null);
+    setPendingFormData(null);
   };
 
-  // ---------- Empty state ----------
-  if (events.length === 0 && !showNewModal && !showDayOffModal) {
-    return (
-      <div className="flex flex-col items-center justify-center text-center h-full overflow-y-auto">
-        <div className="w-20 h-20 rounded-full bg-surface-container flex items-center justify-center mb-4 border border-[#E5E5E5]">
-          <span className="material-symbols-outlined text-4xl text-on-surface-variant">calendar_today</span>
-        </div>
-        <h3 className="text-headline-md font-semibold text-primary mb-1">Sin eventos programados</h3>
-        <p className="text-body-md text-on-surface-variant max-w-sm mb-6">
-          Tu calendario está limpio. Cuando agendes shoots, entregas o reuniones, aparecerán aquí.
-        </p>
-        <div className="flex gap-3">
-          <Button onClick={() => openNewEvent(today.getDate())}>
-            <span className="material-symbols-outlined text-[18px]">add</span>
-            Nuevo evento
-          </Button>
-          <Button variant="secondary" onClick={loadDemo}>
-            <span className="material-symbols-outlined text-[18px]">preview</span>
-            Cargar demo
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  // Cuando el modal detecta fecha pasada, guarda los datos y muestra sugerencia
+  const handlePastDateSuggestion = async (formData) => {
+    setPendingFormData(formData); // preservar datos que ya llenó el usuario
+    // Cerramos el modal sin borrar pendingFormData (onClose sí lo borraría)
+    setModal({ open: false, mode: 'create', data: null, defaultDate: null, defaultTime: null });
+    try {
+      const slot = await appointmentService.getNextAvailable(formData.date || undefined);
+      setSuggestion(slot);
+    } catch (err) {
+      alert('No se encontró espacio disponible');
+    }
+  };
 
-  // ---------- Days off modal ----------
-  if (showDayOffModal) {
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    return (
-      <div className="h-full overflow-y-auto">
-        <div className="max-w-lg mx-auto">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-headline-md font-bold text-primary tracking-tight">Días libres — {MONTHS[month]}</h2>
-            <Button variant="secondary" onClick={() => setShowDayOffModal(false)}>
-              <span className="material-symbols-outlined text-[16px]">close</span>
-              Cerrar
-            </Button>
-          </div>
-          <p className="text-body-md text-on-surface-variant mb-4">
-            Marca los días en los que no recibes reservas. Los días libres se mostrarán tachados en el calendario.
-          </p>
-          <div className="bg-white rounded-xl border border-[#E5E5E5] p-4">
-            <div className="grid grid-cols-7 gap-1">
-              {DAYS.map((d) => (
-                <div key={d} className="text-center text-[10px] font-semibold text-on-surface-variant py-1 uppercase">{d}</div>
-              ))}
-              {buildDays(year, month).filter((d) => d.cur).map((cell, i) => {
-                const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(cell.d).padStart(2, '0')}`;
-                const isOff = daysOff.includes(key);
-                return (
-                  <button key={i} onClick={() => toggleDayOff(cell.d)}
-                    className={`p-2 rounded-lg text-sm font-medium transition-all cursor-pointer
-                      ${isOff ? 'bg-red-100 text-red-600 line-through' : 'hover:bg-[#f5f5f5] text-primary'}
-                      ${isToday(cell.d, true) ? 'ring-2 ring-[#735c00]' : ''}`}>
-                    {cell.d}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div className="mt-4 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm text-on-surface-variant">
-              <div className="w-4 h-4 rounded bg-red-100 border border-red-200" />
-              <span>Día sin reservas ({daysOff.length})</span>
-            </div>
-            <Button onClick={() => setShowDayOffModal(false)}>Listo</Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const openEdit = (appt) => {
+    setModal({ open: true, mode: 'edit', data: appt, defaultDate: null });
+  };
 
-  // ---------- New / Edit Event modal ----------
-  if (showNewModal) {
-    const title = editingEvent ? 'Editar evento' : 'Nuevo evento';
-    return (
-      <div className="h-full overflow-y-auto">
-        <div className="max-w-lg mx-auto">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-headline-md font-bold text-primary tracking-tight">{title}</h2>
-            <Button variant="secondary" onClick={() => { setShowNewModal(false); setEditingEvent(null); }}>
-              <span className="material-symbols-outlined text-[16px]">close</span>
-              Cancelar
-            </Button>
-          </div>
-          <div className="bg-white rounded-xl border border-[#E5E5E5] p-5 space-y-4">
-            {/* Título */}
-            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">Título del evento</label>
-              <input type="text" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                placeholder="Ej: Boda Pérez & García" className="w-full h-10 px-3 rounded-xl border border-[#E5E5E5] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#fed65b]" autoFocus />
-            </div>
-            {/* Fecha y hora */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">Fecha</label>
-                <input type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-                  className="w-full h-10 px-3 rounded-xl border border-[#E5E5E5] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#fed65b]" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">Hora</label>
-                <input type="time" value={form.time} onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))}
-                  className="w-full h-10 px-3 rounded-xl border border-[#E5E5E5] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#fed65b]" />
-              </div>
-            </div>
-            {/* Tipo y ubicación */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">Tipo</label>
-                <select value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
-                  className="w-full h-10 px-3 rounded-xl border border-[#E5E5E5] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#fed65b]">
-                  {TYPES.map((t) => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">Ubicación</label>
-                <input type="text" value={form.location} onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
-                  placeholder="Estudio, playa, etc." className="w-full h-10 px-3 rounded-xl border border-[#E5E5E5] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#fed65b]" />
-              </div>
-            </div>
-            {/* Notas */}
-            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">Notas</label>
-              <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                placeholder="Detalles adicionales…" rows={3} className="w-full px-3 py-2 rounded-xl border border-[#E5E5E5] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#fed65b] resize-none" />
-            </div>
-            {/* Acciones */}
-            <div className="flex justify-end gap-2 pt-2">
-              {editingEvent && (
-                <Button variant="danger" onClick={() => { deleteEvent(editingEvent.id); setShowNewModal(false); setEditingEvent(null); }}>
-                  <span className="material-symbols-outlined text-[16px]">delete</span>
-                  Eliminar
-                </Button>
-              )}
-              <Button onClick={saveEvent} disabled={!form.title.trim()}>
-                <span className="material-symbols-outlined text-[16px]">{editingEvent ? 'save' : 'add'}</span>
-                {editingEvent ? 'Guardar cambios' : 'Crear evento'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // ─── Render ───────────────────────────────────────────────────────────────
 
-  // ---------- Next available slot panel ----------
-  if (showNextSlot) {
-    return (
-      <div className="h-full overflow-y-auto">
-        <div className="max-w-lg mx-auto">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-headline-md font-bold text-primary tracking-tight">Buscar espacio disponible</h2>
-            <Button variant="secondary" onClick={() => setShowNextSlot(false)}>
-              <span className="material-symbols-outlined text-[16px]">close</span>
-              Cerrar
-            </Button>
-          </div>
-          <div className="bg-white rounded-xl border border-[#E5E5E5] p-5 space-y-4">
-            {nextAvailable ? (
-              <>
-                <div className="flex items-center gap-3 p-4 bg-green-50 rounded-xl border border-green-200">
-                  <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center shrink-0">
-                    <span className="material-symbols-outlined text-green-600">event_available</span>
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-green-800">Espacio disponible</p>
-                    <p className="text-[13px] text-green-700">{nextAvailable.label}{nextAvailable.hour && ''}</p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button onClick={() => { openNewEvent(nextAvailable.day); setShowNextSlot(false); }}>
-                    <span className="material-symbols-outlined text-[16px]">add</span>
-                    Agendar aquí
-                  </Button>
-                  <Button variant="secondary" onClick={() => setShowNextSlot(false)}>Cerrar</Button>
-                </div>
-              </>
-            ) : (
-              <div className="text-center py-8">
-                <span className="material-symbols-outlined text-3xl text-on-surface-variant/50 mb-2">calendar_view_month</span>
-                <p className="text-sm text-on-surface-variant">No se encontraron espacios disponibles en lo que resta del mes.</p>
-              </div>
-            )}
-            <div className="text-[11px] text-on-surface-variant pt-2 border-t border-[#E5E5E5]">
-              Busca el próximo día sin eventos que no esté marcado como día libre.
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ---------- Main view ----------
   return (
     <div className="flex flex-col h-full overflow-y-auto">
       {/* Top bar */}
@@ -330,32 +417,43 @@ export default function CalendarPage() {
         <div className="flex items-center gap-2">
           <span className="material-symbols-outlined text-secondary">calendar_today</span>
           <h2 className="text-headline-md font-bold text-primary tracking-tight">Calendario</h2>
-          <span className="text-body-md text-on-surface-variant ml-1">· {events.length} eventos</span>
+          <span className="text-body-md text-on-surface-variant ml-1">· {appointments.length} citas</span>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={() => openNewEvent(selected || today.getDate())}>
-            <span className="material-symbols-outlined text-[16px]">add</span>
-            Nuevo
+          <Button onClick={handleSearchSlot} disabled={searchingSlot}>
+            <span className="material-symbols-outlined text-[16px]">
+              {searchingSlot ? 'sync' : 'find_in_page'}
+            </span>
+            {searchingSlot ? 'Buscando…' : 'Buscar espacio'}
           </Button>
-          <button onClick={() => setShowNextSlot(true)}
-            className="h-9 px-3 rounded-xl border border-[#E5E5E5] bg-white text-xs font-semibold text-primary hover:bg-[#f9f9f9] transition-all flex items-center gap-1.5 cursor-pointer">
-            <span className="material-symbols-outlined text-[16px]">explore</span>
-            Buscar espacio
-          </button>
-          <button onClick={() => setShowDayOffModal(true)}
-            className="h-9 px-3 rounded-xl border border-[#E5E5E5] bg-white text-xs font-semibold text-primary hover:bg-[#f9f9f9] transition-all flex items-center gap-1.5 cursor-pointer">
-            <span className="material-symbols-outlined text-[16px]">block</span>
-            Días libres
-          </button>
-          <Button variant="secondary" onClick={clear}>
-            <span className="material-symbols-outlined text-[16px]">event_busy</span>
-            Vacío
+          <Button onClick={() => openCreate(selected || today.getDate())}>
+            <span className="material-symbols-outlined text-[16px]">add</span>
+            Nueva cita
           </Button>
         </div>
       </div>
 
+      {/* Error banner */}
+      {error && (
+        <div className="mb-3 flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl border border-red-100">
+          <span className="material-symbols-outlined text-sm">error</span>
+          {error}
+          <button onClick={() => setError('')} className="ml-auto cursor-pointer text-red-400 hover:text-red-600">
+            <span className="material-symbols-outlined text-sm">close</span>
+          </button>
+        </div>
+      )}
+
+      {/* Loading indicator */}
+      {loading && (
+        <div className="flex items-center justify-center gap-2 py-3 mb-2 text-sm text-on-surface-variant">
+          <span className="material-symbols-outlined animate-spin text-[16px]">sync</span>
+          Cargando citas…
+        </div>
+      )}
+
       {/* Grid */}
-      <div className="flex flex-col lg:flex-row gap-ds-md flex-1 min-h-0">
+      <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
         {/* Calendar grid */}
         <div className="flex-1 bg-white rounded-xl border border-[#E5E5E5] overflow-hidden flex flex-col min-h-0">
           {/* Navigation */}
@@ -365,51 +463,65 @@ export default function CalendarPage() {
               <h3 className="text-headline-md font-semibold text-primary min-w-[180px] text-center">{MONTHS[month]} {year}</h3>
               <button onClick={() => nav(1)} className="material-symbols-outlined text-on-surface-variant hover:text-primary cursor-pointer p-1">chevron_right</button>
             </div>
-            <button onClick={() => { setMonth(today.getMonth()); setYear(today.getFullYear()); setSelected(null); }}
-              className="text-xs font-semibold text-[#735c00] bg-[#fed65b]/20 hover:bg-[#fed65b]/30 px-3 py-1.5 rounded-lg transition-all cursor-pointer">Hoy</button>
+            <button
+              onClick={() => { setMonth(today.getMonth()); setYear(today.getFullYear()); setSelected(null); }}
+              className="text-xs font-semibold text-[#735c00] bg-[#fed65b]/20 hover:bg-[#fed65b]/30 px-3 py-1.5 rounded-lg transition-all cursor-pointer"
+            >
+              Hoy
+            </button>
           </div>
+
           {/* Day headers */}
           <div className="grid grid-cols-7 border-b border-[#E5E5E5] shrink-0">
             {DAYS.map((d) => (
               <div key={d} className="text-center text-[11px] font-semibold text-on-surface-variant py-2 uppercase tracking-wider">{d}</div>
             ))}
           </div>
+
           {/* Cells */}
           <div className="grid grid-cols-7 flex-1 auto-rows-fr">
             {days.map((cell, i) => {
-              const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(cell.d).padStart(2, '0')}`;
-              const isOff = cell.cur && daysOff.includes(key);
-              const dayEvents = cell.cur ? events.filter((e) => e.date === cell.d) : [];
+              const dayAppts = cell.cur ? (appointmentsByDay[cell.d] || []) : [];
               const isSelected = cell.cur && selected === cell.d;
               return (
-                <div key={i} onClick={() => cell.cur && setSelected(cell.d)}
+                <div
+                  key={i}
+                  onClick={() => cell.cur && setSelected(cell.d)}
                   className={`relative border-b border-r border-[#E5E5E5] p-1.5 text-left transition-all cursor-pointer
                     ${!cell.cur ? 'text-on-surface-variant/30 bg-[#fafafa]' : 'hover:bg-[#f9f9f9]'}
-                    ${isSelected ? 'bg-[#fed65b]/10 ring-2 ring-inset ring-[#735c00]' : ''}
-                    ${isOff ? 'bg-red-50/70' : ''}`}>
-                  {/* Day number */}
+                    ${isSelected ? 'bg-[#fed65b]/10 ring-2 ring-inset ring-[#735c00]' : ''}`}
+                >
                   <div className="flex items-center justify-between mb-0.5" onClick={(e) => e.stopPropagation()}>
                     <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-medium
                       ${isToday(cell.d, cell.cur) ? 'bg-[#735c00] text-white font-bold' : ''}
-                      ${!cell.cur ? 'text-on-surface-variant/30' : isOff ? 'text-red-400 line-through' : 'text-primary'}
-                      ${isSelected && !isToday(cell.d, cell.cur) ? 'bg-[#735c00]/10' : ''}`}>
+                      ${!cell.cur ? 'text-on-surface-variant/30' : 'text-primary'}
+                      ${isSelected && !isToday(cell.d, cell.cur) ? 'bg-[#735c00]/10' : ''}`}
+                    >
                       {cell.d}
                     </span>
                     {cell.cur && (
-                      <button onClick={(e) => { e.stopPropagation(); openNewEvent(cell.d); }}
-                        className="material-symbols-outlined text-[12px] text-on-surface-variant/40 hover:text-[#735c00] opacity-0 group-hover:opacity-100 hover:opacity-100 transition-all cursor-pointer">add_circle</button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openCreate(cell.d); }}
+                        className="material-symbols-outlined text-[12px] text-on-surface-variant/40 hover:text-[#735c00] hover:opacity-100 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                      >
+                        add_circle
+                      </button>
                     )}
                   </div>
-                  {isOff && <div className="text-[9px] text-red-400 font-medium mt-0.5">Libre</div>}
-                  {dayEvents.length > 0 && (
+                  {dayAppts.length > 0 && (
                     <div className="mt-0.5 space-y-0.5">
-                      {dayEvents.slice(0, 2).map((evt) => (
-                        <button key={evt.id} onClick={(e) => { e.stopPropagation(); openEditEvent(evt); }}
-                          className={`w-full text-left text-[10px] px-1.5 py-0.5 rounded truncate font-medium ${TYPE_COLORS[evt.type] || 'bg-gray-200'} text-white hover:opacity-80 transition-opacity cursor-pointer block border-l-[3px] border-[#00000030] shadow-[0_1px_2px_rgba(0,0,0,0.08)]`}>
-                          {evt.title.length > 14 ? evt.title.slice(0, 12) + '…' : evt.title}
+                      {dayAppts.slice(0, 2).map((appt) => (
+                        <button
+                          key={appt.id}
+                          onClick={(e) => { e.stopPropagation(); openEdit(appt); }}
+                          className={`w-full text-left text-[10px] px-1.5 py-0.5 rounded truncate font-medium ${getTypeColor(appt.session_type)} text-white hover:opacity-80 transition-opacity cursor-pointer block`}
+                        >
+                          {(appt.title || appt.client_name || appt.session_type || 'Cita').slice(0, 14)}
                         </button>
                       ))}
-                      {dayEvents.length > 2 && <div className="text-[10px] text-on-surface-variant pl-1">+{dayEvents.length - 2}</div>}
+                      {dayAppts.length > 2 && (
+                        <div className="text-[10px] text-on-surface-variant pl-1">+{dayAppts.length - 2}</div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -418,7 +530,7 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        {/* Side panel - events for selected day */}
+        {/* Side panel */}
         <div className="lg:w-72 xl:w-80 bg-white rounded-xl border border-[#E5E5E5] flex flex-col shrink-0">
           <div className="px-4 py-3 border-b border-[#E5E5E5] shrink-0 flex items-center justify-between">
             <div>
@@ -426,79 +538,168 @@ export default function CalendarPage() {
                 {selected ? `${selected} de ${MONTHS[month]}` : 'Selecciona un día'}
               </h4>
               <p className="text-body-md text-on-surface-variant">
-                {selectedEvents.length > 0 ? `${selectedEvents.length} evento${selectedEvents.length !== 1 ? 's' : ''}` : selected ? 'Sin eventos' : 'Haz clic en una fecha'}
+                {selectedAppointments.length > 0
+                  ? `${selectedAppointments.length} cita${selectedAppointments.length !== 1 ? 's' : ''}`
+                  : selected ? 'Sin citas' : 'Haz clic en una fecha'}
               </p>
             </div>
             {selected && (
-              <button onClick={() => openNewEvent(selected)}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-on-surface-variant hover:text-[#735c00] hover:bg-[#fed65b]/20 transition-all cursor-pointer">
+              <button
+                onClick={() => openCreate(selected)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-on-surface-variant hover:text-[#735c00] hover:bg-[#fed65b]/20 transition-all cursor-pointer"
+              >
                 <span className="material-symbols-outlined text-[18px]">add</span>
               </button>
             )}
           </div>
+
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {selectedEvents.length > 0 ? (
-              selectedEvents.map((evt) => (
-                <div key={evt.id} className="group p-3 rounded-xl border border-[#E5E5E5] bg-white hover:shadow-sm transition-all">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${TYPE_COLORS[evt.type] || 'bg-gray-300'}`} />
-                      <span className="text-xs font-semibold text-primary truncate">{evt.title}</span>
+            {selectedAppointments.length > 0 ? (
+              selectedAppointments.map((appt) => {
+                const statusCfg = STATUS_CONFIG[appt.status] || STATUS_CONFIG.pendiente;
+                return (
+                  <button
+                    key={appt.id}
+                    onClick={() => openEdit(appt)}
+                    className="group w-full text-left p-3 rounded-xl border border-[#E5E5E5] bg-white hover:shadow-sm transition-all cursor-pointer"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${getTypeColor(appt.session_type)}`} />
+                        <span className="text-xs font-semibold text-primary truncate">
+                          {appt.client_name || 'Cliente'}
+                        </span>
+                      </div>
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${statusCfg.bg} ${statusCfg.text}`}>
+                        {statusCfg.label}
+                      </span>
                     </div>
-                    <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => openEditEvent(evt)}
-                        className="w-7 h-7 rounded-full flex items-center justify-center text-on-surface-variant hover:text-[#735c00] hover:bg-[#fed65b]/20 transition-all cursor-pointer">
-                        <span className="material-symbols-outlined text-[14px]">edit</span>
-                      </button>
-                      <button onClick={() => deleteEvent(evt.id)}
-                        className="w-7 h-7 rounded-full flex items-center justify-center text-on-surface-variant hover:text-red-500 hover:bg-red-50 transition-all cursor-pointer">
-                        <span className="material-symbols-outlined text-[14px]">delete</span>
-                      </button>
+                    <div className="space-y-0.5 mt-1.5 text-[11px] text-on-surface-variant">
+                      {appt.time && (
+                        <div className="flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[12px]">schedule</span>
+                          {appt.time?.slice(0, 5)}
+                        </div>
+                      )}
+                      {appt.session_type && (
+                        <div className="flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[12px]">camera_alt</span>
+                          {appt.session_type}
+                        </div>
+                      )}
+                      {appt.location && (
+                        <div className="flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[12px]">location_on</span>
+                          {appt.location}
+                        </div>
+                      )}
+                      {appt.notes && (
+                        <div className="flex items-start gap-1 mt-1">
+                          <span className="material-symbols-outlined text-[12px] mt-0.5">notes</span>
+                          <span className="text-on-surface-variant/70 line-clamp-2">{appt.notes}</span>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                  <div className="space-y-0.5 mt-1.5 text-[11px] text-on-surface-variant">
-                    {evt.time && <div className="flex items-center gap-1"><span className="material-symbols-outlined text-[12px]">schedule</span>{evt.time}</div>}
-                    {evt.location && <div className="flex items-center gap-1"><span className="material-symbols-outlined text-[12px]">location_on</span>{evt.location}</div>}
-                    {evt.notes && <div className="flex items-start gap-1 mt-1"><span className="material-symbols-outlined text-[12px] mt-0.5">notes</span><span className="text-on-surface-variant/70">{evt.notes}</span></div>}
-                  </div>
-                </div>
-              ))
+                  </button>
+                );
+              })
             ) : (
               <div className="flex flex-col items-center justify-center text-center py-10">
                 <span className="material-symbols-outlined text-3xl text-on-surface-variant/50 mb-2">event_busy</span>
-                <p className="text-sm text-on-surface-variant">{selected ? 'No hay eventos este día' : 'Selecciona una fecha'}</p>
+                <p className="text-sm text-on-surface-variant">
+                  {selected ? 'No hay citas este día' : 'Selecciona una fecha'}
+                </p>
                 {selected && (
-                  <button onClick={() => openNewEvent(selected)}
-                    className="mt-3 text-xs font-semibold text-[#735c00] hover:underline cursor-pointer flex items-center gap-1">
+                  <button
+                    onClick={() => openCreate(selected)}
+                    className="mt-3 text-xs font-semibold text-[#735c00] hover:underline cursor-pointer flex items-center gap-1"
+                  >
                     <span className="material-symbols-outlined text-[14px]">add</span>
-                    Agregar evento
+                    Agregar cita
                   </button>
                 )}
               </div>
             )}
           </div>
-          {/* Legend + bulk actions */}
-          <div className="px-4 py-3 border-t border-[#E5E5E5] shrink-0 space-y-2">
-            <div>
-              <p className="text-[10px] font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">Tipos</p>
-              <div className="grid grid-cols-2 gap-1">
-                {Object.entries(TYPE_LABELS).map(([k, v]) => (
-                  <div key={k} className="flex items-center gap-1.5">
-                    <div className={`w-2 h-2 rounded-full ${TYPE_COLORS[k]}`} />
-                    <span className="text-[10px] text-on-surface-variant">{v}</span>
-                  </div>
-                ))}
-              </div>
+
+          {/* Estado vacío total */}
+          {!loading && appointments.length === 0 && (
+            <div className="px-4 py-3 border-t border-[#E5E5E5] text-center">
+              <p className="text-[11px] text-on-surface-variant mb-2">No hay citas este mes</p>
+              <Button onClick={() => openCreate(today.getDate())}>
+                <span className="material-symbols-outlined text-[14px]">add</span>
+                Crear primera cita
+              </Button>
             </div>
-            {daysOff.length > 0 && (
-              <div className="flex items-center gap-1.5 text-[10px] text-red-500 font-medium">
-                <span className="material-symbols-outlined text-[12px]">block</span>
-                {daysOff.length} día{daysOff.length !== 1 ? 's' : ''} sin reservas este mes
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </div>
+
+      {/* Modal */}
+      {/* Diálogo de sugerencia de espacio disponible */}
+      {suggestion && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl border border-[#E5E5E5] p-6 max-w-md w-full shadow-lg animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                <span className="material-symbols-outlined text-amber-600">info</span>
+              </div>
+              <div>
+                <h4 className="font-semibold text-primary text-lg">Espacio disponible</h4>
+                <p className="text-body-md text-on-surface-variant">
+                  El próximo espacio libre disponible es:
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-5">
+              <div className="flex items-center justify-center gap-6">
+                <div className="text-center">
+                  <span className="material-symbols-outlined text-amber-600 block text-2xl mb-1">calendar_today</span>
+                  <span className="font-semibold text-primary text-lg">{suggestion.date}</span>
+                </div>
+                <div className="text-2xl text-on-surface-variant">→</div>
+                <div className="text-center">
+                  <span className="material-symbols-outlined text-amber-600 block text-2xl mb-1">schedule</span>
+                  <span className="font-semibold text-primary text-lg">{suggestion.time}</span>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-body-md text-on-surface-variant mb-5 text-center">
+              ¿Quieres agendar la cita en este horario?
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setSuggestion(null); setPendingFormData(null); }}
+                className="flex-1 h-11 rounded-xl border border-[#E5E5E5] text-sm font-medium text-on-surface-variant hover:bg-gray-50 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={acceptSuggestion}
+                className="flex-1 h-11 rounded-xl bg-[#735c00] text-white text-sm font-medium hover:bg-[#5a4900] transition-colors cursor-pointer"
+              >
+                Usar este horario
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modal.open && (
+        <AppointmentModal
+          mode={modal.mode}
+          data={modal.data}
+          clients={clients}
+          defaultDate={modal.defaultDate}
+          defaultTime={modal.defaultTime}
+          onClose={() => { setModal({ open: false, mode: 'create', data: null, defaultDate: null, defaultTime: null }); setPendingFormData(null); }}
+          onSaved={loadData}
+          onPastDateSuggestion={handlePastDateSuggestion}
+        />
+      )}
     </div>
   );
 }

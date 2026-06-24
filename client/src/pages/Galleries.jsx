@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import galleryService from '../services/galleryService';
+import clientService from '../services/clientService';
 
-// ---------- Helpers de UI ----------
+// ─── Helpers de UI ────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG = {
   active: { label: 'Activa', bg: 'bg-green-50', text: 'text-green-700', dot: 'bg-green-500' },
@@ -25,19 +25,12 @@ function formatDate(iso) {
   return d.toLocaleDateString('es-DO', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function formatPhotoCount(n) {
-  if (n === 0) return 'Sin fotos';
-  if (n === 1) return '1 foto';
-  return `${n} fotos`;
-}
-
-// ---------- Componente principal ----------
+// ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function Galleries() {
-  const navigate = useNavigate();
-
   // Estado de datos
   const [galleries, setGalleries] = useState([]);
+  const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -47,54 +40,59 @@ export default function Galleries() {
 
   // Estado de modales
   const [galleryModal, setGalleryModal] = useState({ open: false, mode: 'add', data: null });
-  const [deleteConfirm, setDeleteConfirm] = useState(null); // { id, name } o null
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
 
-  // ---------- Carga de datos ----------
+  const searchRef = useRef(searchQuery);
+  useEffect(() => {
+    searchRef.current = searchQuery;
+  }, [searchQuery]);
 
-  const loadGalleries = useCallback(async () => {
+  // ─── Carga de datos ──────────────────────────────────────────────────────────
+
+  const loadGalleries = useCallback(async (query) => {
     setLoading(true);
     setError('');
     try {
-      const data = await galleryService.getAll({
+      const result = await galleryService.getAll({
         status: statusFilter,
-        search: searchQuery,
+        search: query !== undefined ? query : searchRef.current,
       });
-      setGalleries(data);
+      setGalleries(result.data || []);
     } catch (e) {
       console.error('Error loading galleries', e);
       setError('No se pudieron cargar las galerías.');
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, searchQuery]);
+  }, [statusFilter]);
+
+  const loadClients = useCallback(async () => {
+    try {
+      const result = await clientService.getAll({ limit: 200 });
+      setClients(result.data || []);
+    } catch (e) {
+      console.error('Error loading clients', e);
+    }
+  }, []);
 
   useEffect(() => {
-    loadGalleries();
-  }, [loadGalleries]);
+    loadClients();
+  }, [loadClients]);
 
-  // Debounce para búsqueda
   useEffect(() => {
     const timer = setTimeout(() => {
-      loadGalleries();
-    }, 300);
+      loadGalleries(searchQuery);
+    }, searchQuery ? 300 : 0);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery]);
+  }, [loadGalleries, searchQuery]);
 
-  // ---------- Handlers de CRUD ----------
+  // ─── Handlers de CRUD ────────────────────────────────────────────────────────
 
   const handleOpenCreate = () => {
     setGalleryModal({
       open: true,
       mode: 'add',
-      data: {
-        name: '',
-        clientName: '',
-        description: '',
-        date: new Date().toISOString().split('T')[0],
-        status: 'draft',
-        tags: [],
-      },
+      data: null,
     });
   };
 
@@ -109,26 +107,17 @@ export default function Galleries() {
   const handleSaveGallery = async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    const name = fd.get('name');
-    const clientName = fd.get('clientName');
-    const description = fd.get('description');
-    const date = fd.get('date');
+    const title = fd.get('title')?.trim();
+    const client_id = fd.get('client_id');
     const status = fd.get('status');
-    const tagsRaw = fd.get('tags');
 
-    if (!name || !clientName) return;
-
-    const tags = tagsRaw
-      ? tagsRaw.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean)
-      : [];
+    if (!title || !client_id) return;
 
     try {
       if (galleryModal.mode === 'add') {
-        await galleryService.create({ name, clientName, description, date, status, tags });
+        await galleryService.create({ client_id, title, status });
       } else {
-        await galleryService.update(galleryModal.data.id, {
-          name, clientName, description, date, status, tags,
-        });
+        await galleryService.update(galleryModal.data.id, { title, status });
       }
       setGalleryModal({ open: false, mode: 'add', data: null });
       await loadGalleries();
@@ -150,7 +139,14 @@ export default function Galleries() {
     }
   };
 
-  // ---------- Render ----------
+  // Encuentra el nombre del cliente por su id
+  const getClientName = (clientId) => {
+    if (!clientId) return null;
+    const c = clients.find((cl) => cl.id === clientId);
+    return c ? `${c.first_name} ${c.last_name}`.trim() : null;
+  };
+
+  // ─── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-ds-lg max-w-4xl mx-auto pb-40 overflow-y-auto h-full">
@@ -198,7 +194,7 @@ export default function Galleries() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar por nombre, cliente o etiqueta..."
+            placeholder="Buscar por título o cliente…"
             className="w-full h-10 pl-10 pr-4 rounded-xl border border-[#E5E5E5] bg-white text-sm text-primary placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-[#fed65b] focus:border-[#735c00] transition-all"
           />
           {searchQuery && (
@@ -266,27 +262,24 @@ export default function Galleries() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-ds-md">
           {galleries.map((gallery) => {
             const statusCfg = STATUS_CONFIG[gallery.status] || STATUS_CONFIG.draft;
+            const clientName = gallery.client_name || getClientName(gallery.client_id) || 'Cliente';
             return (
               <Card
                 key={gallery.id}
                 interactive
                 className="group flex flex-col"
               >
-                {/* Cover / Placeholder */}
+                {/* Header visual: fotos */}
                 <div className="relative w-full aspect-[16/10] rounded-lg overflow-hidden bg-surface-container-highest mb-3">
-                  {gallery.coverPhoto ? (
-                    <img
-                      src={gallery.coverPhoto}
-                      alt={gallery.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <span className="material-symbols-outlined text-4xl text-on-surface-variant/30">
-                        photo_library
-                      </span>
-                    </div>
-                  )}
+                  {/* Placeholder con número de fotos */}
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-secondary/10 to-secondary/5">
+                    <span className="material-symbols-outlined text-5xl text-secondary/40">
+                      photos
+                    </span>
+                    <span className="text-xs font-medium text-secondary/60">
+                      {gallery.photo_count || 0} foto{gallery.photo_count !== 1 ? 's' : ''}
+                    </span>
+                  </div>
 
                   {/* Status badge */}
                   <div
@@ -297,7 +290,7 @@ export default function Galleries() {
                   </div>
 
                   {/* Hover overlay: Edit button */}
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-all flex items-start justify-end p-2 opacity-0 group-hover:opacity-100">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -314,41 +307,23 @@ export default function Galleries() {
                 {/* Info */}
                 <div className="flex-1 flex flex-col">
                   <h3 className="text-label-md font-semibold text-primary mb-0.5 truncate">
-                    {gallery.name}
+                    {gallery.title}
                   </h3>
                   <p className="text-body-md text-on-surface-variant truncate">
-                    {gallery.clientName}
+                    {clientName}
                   </p>
 
                   <div className="mt-auto pt-3 flex items-center justify-between text-[12px] text-on-surface-variant">
                     <span className="flex items-center gap-1">
                       <span className="material-symbols-outlined text-[14px]">calendar_today</span>
-                      {formatDate(gallery.date)}
+                      {formatDate(gallery.created_at) || '—'}
                     </span>
-                    <span className="flex items-center gap-1">
-                      <span className="material-symbols-outlined text-[14px]">photo</span>
-                      {formatPhotoCount(gallery.photoCount)}
-                    </span>
+                    {gallery.share_token && (
+                      <span className="flex items-center gap-1" title="Compartida">
+                        <span className="material-symbols-outlined text-[14px]">share</span>
+                      </span>
+                    )}
                   </div>
-
-                  {/* Tags */}
-                  {gallery.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {gallery.tags.slice(0, 3).map((tag) => (
-                        <span
-                          key={tag}
-                          className="text-[10px] bg-surface-container-low text-on-surface-variant px-2 py-0.5 rounded-full"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                      {gallery.tags.length > 3 && (
-                        <span className="text-[10px] text-on-surface-variant">
-                          +{gallery.tags.length - 3}
-                        </span>
-                      )}
-                    </div>
-                  )}
                 </div>
 
                 {/* Acciones rápidas en hover */}
@@ -365,7 +340,7 @@ export default function Galleries() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setDeleteConfirm({ id: gallery.id, name: gallery.name });
+                      setDeleteConfirm({ id: gallery.id, title: gallery.title });
                     }}
                     className="text-xs font-medium text-red-500 hover:text-red-700 cursor-pointer"
                   >
@@ -396,91 +371,66 @@ export default function Galleries() {
             </div>
 
             <form onSubmit={handleSaveGallery} className="space-y-ds-md">
-              {/* Nombre */}
+              {/* Título */}
               <div>
                 <label className="text-label-md text-primary font-semibold block mb-1">
-                  Nombre de la galería <span className="text-red-400">*</span>
+                  Título de la galería <span className="text-red-400">*</span>
                 </label>
                 <input
-                  name="name"
+                  name="title"
                   required
                   placeholder="Ej: Boda María & Carlos"
-                  defaultValue={galleryModal.data?.name || ''}
+                  defaultValue={galleryModal.data?.title || ''}
                   className="w-full h-10 px-ds-md rounded-xl border border-[#E5E5E5] font-body-md text-body-md"
                 />
               </div>
 
-              {/* Cliente */}
-              <div>
-                <label className="text-label-md text-primary font-semibold block mb-1">
-                  Cliente <span className="text-red-400">*</span>
-                </label>
-                <input
-                  name="clientName"
-                  required
-                  placeholder="Nombre del cliente"
-                  defaultValue={galleryModal.data?.clientName || ''}
-                  className="w-full h-10 px-ds-md rounded-xl border border-[#E5E5E5] font-body-md text-body-md"
-                />
-              </div>
-
-              {/* Descripción */}
-              <div>
-                <label className="text-label-md text-primary font-semibold block mb-1">
-                  Descripción
-                </label>
-                <textarea
-                  name="description"
-                  placeholder="Describe el evento o sesión…"
-                  defaultValue={galleryModal.data?.description || ''}
-                  rows={3}
-                  className="w-full p-ds-md rounded-xl border border-[#E5E5E5] font-body-md text-body-md resize-none"
-                />
-              </div>
-
-              {/* Fecha y Estado en grid */}
-              <div className="grid grid-cols-2 gap-ds-md">
+              {/* Cliente (solo dropdown en creación) */}
+              {galleryModal.mode === 'add' ? (
                 <div>
                   <label className="text-label-md text-primary font-semibold block mb-1">
-                    Fecha del evento
-                  </label>
-                  <input
-                    type="date"
-                    name="date"
-                    defaultValue={galleryModal.data?.date || ''}
-                    className="w-full h-10 px-ds-md rounded-xl border border-[#E5E5E5] font-body-md text-body-md"
-                  />
-                </div>
-                <div>
-                  <label className="text-label-md text-primary font-semibold block mb-1">
-                    Estado
+                    Cliente <span className="text-red-400">*</span>
                   </label>
                   <select
-                    name="status"
-                    defaultValue={galleryModal.data?.status || 'draft'}
+                    name="client_id"
+                    required
+                    defaultValue={galleryModal.data?.client_id || ''}
                     className="w-full h-10 px-ds-md rounded-xl border border-[#E5E5E5] font-body-md text-body-md bg-white"
                   >
-                    <option value="draft">Borrador</option>
-                    <option value="active">Activa</option>
-                    <option value="archived">Archivada</option>
+                    <option value="">Selecciona un cliente…</option>
+                    {clients.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.first_name} {c.last_name}
+                      </option>
+                    ))}
                   </select>
                 </div>
-              </div>
+              ) : (
+                // En edición mostrar el nombre del cliente (no se puede cambiar)
+                <div>
+                  <label className="text-label-md text-primary font-semibold block mb-1">
+                    Cliente
+                  </label>
+                  <p className="h-10 px-ds-md rounded-xl border border-[#E5E5E5] font-body-md text-body-md flex items-center bg-gray-50 text-on-surface-variant">
+                    {galleryModal.data?.client_name || getClientName(galleryModal.data?.client_id) || '—'}
+                  </p>
+                </div>
+              )}
 
-              {/* Etiquetas */}
+              {/* Estado */}
               <div>
                 <label className="text-label-md text-primary font-semibold block mb-1">
-                  Etiquetas
+                  Estado
                 </label>
-                <input
-                  name="tags"
-                  placeholder="boda, playa, outdoor (separadas por coma)"
-                  defaultValue={(galleryModal.data?.tags || []).join(', ')}
-                  className="w-full h-10 px-ds-md rounded-xl border border-[#E5E5E5] font-body-md text-body-md"
-                />
-                <p className="text-[11px] text-on-surface-variant mt-1">
-                  Separa las etiquetas con coma.
-                </p>
+                <select
+                  name="status"
+                  defaultValue={galleryModal.data?.status || 'draft'}
+                  className="w-full h-10 px-ds-md rounded-xl border border-[#E5E5E5] font-body-md text-body-md bg-white"
+                >
+                  <option value="draft">Borrador</option>
+                  <option value="active">Activa</option>
+                  <option value="archived">Archivada</option>
+                </select>
               </div>
 
               {/* Acciones */}
@@ -511,7 +461,7 @@ export default function Galleries() {
               <div>
                 <h4 className="text-headline-md font-semibold text-primary">Eliminar galería</h4>
                 <p className="text-body-md text-on-surface-variant">
-                  ¿Estás seguro de eliminar <strong>{deleteConfirm.name}</strong>?
+                  ¿Estás seguro de eliminar <strong>{deleteConfirm.title}</strong>?
                 </p>
                 <p className="text-body-md text-red-600 text-sm mt-1">
                   Esta acción no se puede deshacer.

@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>PhotoCRM | Settings</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "outline-variant": "#cfc4c5",
+                    "primary-fixed-dim": "#c6c6c6",
+                    "on-primary-fixed-variant": "#474747",
+                    "on-tertiary-fixed-variant": "#474747",
+                    "surface-container-lowest": "#ffffff",
+                    "on-secondary-container": "#745c00",
+                    "surface-dim": "#dadada",
+                    "on-surface-variant": "#4c4546",
+                    "surface-bright": "#f9f9f9",
+                    "inverse-primary": "#c6c6c6",
+                    "primary-container": "#1b1b1b",
+                    "error-container": "#ffdad6",
+                    "outline": "#7e7576",
+                    "secondary-fixed": "#ffe088",
+                    "on-secondary-fixed-variant": "#574500",
+                    "tertiary-fixed": "#e2e2e2",
+                    "secondary-container": "#fed65b",
+                    "on-error": "#ffffff",
+                    "on-tertiary-container": "#848484",
+                    "on-primary-container": "#848484",
+                    "surface-variant": "#e2e2e2",
+                    "surface-container-highest": "#e2e2e2",
+                    "on-primary-fixed": "#1b1b1b",
+                    "inverse-surface": "#303030",
+                    "on-secondary": "#ffffff",
+                    "surface-tint": "#5e5e5e",
+                    "primary": "#000000",
+                    "on-surface": "#1b1b1b",
+                    "secondary": "#735c00",
+                    "surface-container-low": "#f3f3f3",
+                    "primary-fixed": "#e2e2e2",
+                    "on-tertiary-fixed": "#1b1b1b",
+                    "on-error-container": "#93000a",
+                    "tertiary-fixed-dim": "#c6c6c6",
+                    "surface-container-high": "#e8e8e8",
+                    "surface-container": "#eeeeee",
+                    "surface": "#f9f9f9",
+                    "error": "#ba1a1a",
+                    "inverse-on-surface": "#f1f1f1",
+                    "on-secondary-fixed": "#241a00",
+                    "tertiary-container": "#1b1b1b",
+                    "tertiary": "#000000",
+                    "background": "#f9f9f9",
+                    "on-tertiary": "#ffffff",
+                    "secondary-fixed-dim": "#e9c349",
+                    "on-primary": "#ffffff",
+                    "on-background": "#1b1b1b"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "margin-mobile": "16px",
+                    "sm": "12px",
+                    "gutter": "16px",
+                    "md": "16px",
+                    "lg": "24px",
+                    "margin-desktop": "40px",
+                    "xs": "8px",
+                    "xl": "32px",
+                    "base": "4px"
+            },
+            "fontFamily": {
+                    "headline-md": ["Inter"],
+                    "body-md": ["Inter"],
+                    "display-lg": ["Inter"],
+                    "headline-lg": ["Inter"],
+                    "headline-lg-mobile": ["Inter"],
+                    "label-md": ["Inter"],
+                    "label-sm": ["Inter"],
+                    "body-lg": ["Inter"]
+            },
+            "fontSize": {
+                    "headline-md": ["20px", {"lineHeight": "28px", "fontWeight": "500"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "display-lg": ["40px", {"lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                    "headline-lg": ["30px", {"lineHeight": "36px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500"}],
+                    "label-sm": ["11px", {"lineHeight": "14px", "fontWeight": "600"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            background-color: #f9f9f9;
+            color: #1b1b1b;
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        /* Custom Toggle Switch */
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #735c00;
+        }
+        .toggle-checkbox:checked + .toggle-label::after {
+            transform: translateX(20px);
+        }
+        .settings-card {
+            border: 1px solid #E5E5E5;
+            transition: transform 0.1s ease;
+        }
+        .settings-card:active {
+            transform: scale(0.995);
+        }
+        input:focus {
+            outline: none;
+            border-color: #000000 !important;
+            box-shadow: 0 0 0 1px #000000;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="pb-32">
+<!-- TopAppBar -->
+<header class="bg-surface dark:bg-surface-dim border-b border-outline-variant dark:border-outline flex justify-between items-center w-full px-margin-mobile py-sm fixed top-0 z-50">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-on-surface-variant">menu</span>
+<h1 class="font-headline-lg-mobile text-headline-lg-mobile font-bold text-secondary dark:text-secondary-fixed">PhotoCRM</h1>
+</div>
+<div class="w-8 h-8 rounded-full bg-surface-container-highest overflow-hidden border border-outline-variant">
+<img alt="Profile" class="w-full h-full object-cover" data-alt="A professional close-up portrait of a female creative director in a bright, minimalist studio setting. She has a confident expression, wearing modern glasses and a neutral-toned linen shirt. The lighting is soft and editorial, with a clean off-white background that reflects a high-end, organized brand identity." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDOgP52TfTZcw4MiWKXbvbM5iEvyiB58GFdF3I_FUcvIEup8roeAB2qmqQ68HuRAn1DyNoC0pnBnGftLtHk1uT-PE6y08YNiZWqDm4RSCyLCMMC-T5jfy6qb1GAw75fEEA4xbbKAhQsEdhuU9YJXzylHTCjRoZ0sewKwMbon_T04px5TogyS1GPzAGtS9vxNCQJJxondWVsuyepXO8SHRT62oPCEOBXb1irOJAkWnCfkP0-QquZCnYS4WIRT6TeCU86P18a9_aiNc0"/>
+</div>
+</header>
+<main class="pt-20 px-margin-mobile max-w-xl mx-auto">
+<!-- Page Title & Description -->
+<div class="mb-lg">
+<h2 class="font-headline-md text-headline-md text-primary mb-1">Settings</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Configure your photography workflow and API integrations.</p>
+</div>
+<!-- WhatsApp API Section -->
+<section class="mb-xl">
+<div class="flex items-center gap-2 mb-sm px-1">
+<span class="material-symbols-outlined text-secondary text-[20px]">hub</span>
+<h3 class="font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant">WhatsApp API</h3>
+</div>
+<div class="bg-white rounded-xl p-md border border-[#E5E5E5] space-y-lg">
+<div class="flex justify-between items-center">
+<div>
+<p class="font-label-md text-label-md text-primary">Connection Status</p>
+<p class="font-body-md text-body-md text-on-surface-variant">Linked to +1 (555) 0123</p>
+</div>
+<div class="flex items-center gap-2 bg-[#F5F5F5] px-3 py-1 rounded-full">
+<div class="w-2 h-2 rounded-full bg-green-500"></div>
+<span class="font-label-sm text-label-sm text-primary">Active</span>
+</div>
+</div>
+<div class="space-y-base">
+<label class="font-label-md text-label-md text-primary ml-1">API Key</label>
+<div class="relative">
+<input class="w-full h-10 px-md rounded-xl border border-[#E5E5E5] font-body-md text-body-md pr-12" readonly="" type="password" value="••••••••••••••••••••"/>
+<button class="absolute right-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-on-surface-variant text-[20px]">content_copy</button>
+</div>
+</div>
+<div class="space-y-base">
+<label class="font-label-md text-label-md text-primary ml-1">Webhook URL</label>
+<input class="w-full h-10 px-md rounded-xl border border-[#E5E5E5] font-body-md text-body-md" type="text" value="https://api.photocrm.com/v1/webhook/waba_01"/>
+</div>
+</div>
+</section>
+<!-- Client Portal Section -->
+<section class="mb-xl">
+<div class="flex items-center gap-2 mb-sm px-1">
+<span class="material-symbols-outlined text-secondary text-[20px]">grid_view</span>
+<h3 class="font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant">Client Portal</h3>
+</div>
+<div class="bg-white rounded-xl border border-[#E5E5E5] overflow-hidden">
+<div class="p-md flex justify-between items-center border-b border-[#E5E5E5]">
+<div>
+<p class="font-label-md text-label-md text-primary">Public Portal Access</p>
+<p class="font-body-md text-body-md text-on-surface-variant">Allow clients to view their galleries</p>
+</div>
+<div class="relative inline-block w-11 h-6 transition duration-200 ease-in-out">
+<input checked="" class="toggle-checkbox absolute block w-0 h-0 opacity-0" id="toggle-portal" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-6 rounded-full bg-surface-container-highest cursor-pointer transition-colors duration-200 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all" for="toggle-portal"></label>
+</div>
+</div>
+<div class="p-md flex justify-between items-center bg-surface-container-low/50">
+<div>
+<p class="font-label-md text-label-md text-primary">Branded Domain</p>
+<p class="font-body-md text-body-md text-on-surface-variant">portal.yourbrand.com</p>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant">chevron_right</span>
+</div>
+</div>
+</section>
+<!-- Message Templates -->
+<section class="mb-xl">
+<div class="flex items-center gap-2 mb-sm px-1">
+<span class="material-symbols-outlined text-secondary text-[20px]">chat_bubble</span>
+<h3 class="font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant">Message Templates</h3>
+</div>
+<div class="space-y-sm">
+<div class="bg-white p-md rounded-xl border border-[#E5E5E5] flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-secondary-container/20 flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined">schedule</span>
+</div>
+<div>
+<p class="font-label-md text-label-md text-primary">Booking Confirmation</p>
+<p class="font-body-md text-body-md text-on-surface-variant">Sent after deposit payment</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline">edit</span>
+</div>
+<div class="bg-white p-md rounded-xl border border-[#E5E5E5] flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined">photo_library</span>
+</div>
+<div>
+<p class="font-label-md text-label-md text-primary">Gallery Delivery</p>
+<p class="font-body-md text-body-md text-on-surface-variant">Sent when photos are ready</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline">edit</span>
+</div>
+<button class="w-full border border-dashed border-outline-variant py-md rounded-xl flex items-center justify-center gap-2 text-on-surface-variant hover:bg-surface-container-low transition-colors">
+<span class="material-symbols-outlined text-[20px]">add</span>
+<span class="font-label-md text-label-md">Create New Template</span>
+</button>
+</div>
+</section>
+<!-- User Permissions -->
+<section class="mb-xl">
+<div class="flex items-center gap-2 mb-sm px-1">
+<span class="material-symbols-outlined text-secondary text-[20px]">admin_panel_settings</span>
+<h3 class="font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant">User Permissions</h3>
+</div>
+<div class="bg-white rounded-xl border border-[#E5E5E5] divide-y divide-[#E5E5E5]">
+<div class="p-md flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-secondary-fixed-dim text-on-secondary-fixed flex items-center justify-center font-bold text-xs">JS</div>
+<div>
+<p class="font-label-md text-label-md text-primary">James Smith</p>
+<p class="font-body-md text-body-md text-on-surface-variant">Lead Photographer (Admin)</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant">more_vert</span>
+</div>
+<div class="p-md flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest text-on-surface-variant flex items-center justify-center font-bold text-xs">AR</div>
+<div>
+<p class="font-label-md text-label-md text-primary">Anna Reed</p>
+<p class="font-body-md text-body-md text-on-surface-variant">Editor (Standard Access)</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant">more_vert</span>
+</div>
+</div>
+</section>
+</main>
+<!-- Floating Save Button -->
+<div class="fixed bottom-24 left-0 w-full px-margin-mobile z-40">
+<button class="w-full bg-[#D4AF37] text-black h-[48px] rounded-xl font-headline-md text-headline-md flex items-center justify-center gap-2 shadow-lg hover:brightness-110 active:scale-[0.98] transition-all">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">save</span>
+            Save Changes
+        </button>
+</div>
+<!-- Bottom Navigation Bar (Shell) -->
+<nav class="fixed bottom-0 w-full flex justify-around items-center px-xs py-base pb-safe bg-surface dark:bg-surface-dim border-t border-outline-variant dark:border-outline z-50 shadow-sm">
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline hover:text-primary dark:hover:text-primary-fixed transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined">home</span>
+<span class="font-label-md text-label-md">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline hover:text-primary dark:hover:text-primary-fixed transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined">group</span>
+<span class="font-label-md text-label-md">CRM</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline hover:text-primary dark:hover:text-primary-fixed transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined">mail</span>
+<span class="font-label-md text-label-md">Messages</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline hover:text-primary dark:hover:text-primary-fixed transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined">calendar_today</span>
+<span class="font-label-md text-label-md">Calendar</span>
+</a>
+<!-- Active Tab: Using CRM or implicitly Custom Settings -->
+<div class="flex flex-col items-center justify-center bg-secondary-container/10 dark:bg-secondary-fixed-dim/20 text-secondary dark:text-secondary-fixed-dim rounded-xl px-3 py-1 active:scale-90 duration-200">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">settings</span>
+<span class="font-label-md text-label-md">Settings</span>
+</div>
+</nav>
+<script>
+        // Micro-interaction for the save button
+        const saveBtn = document.querySelector('button.bg-\\[\\#D4AF37\\]');
+        saveBtn.addEventListener('click', () => {
+            const originalText = saveBtn.innerHTML;
+            saveBtn.innerHTML = '<span class="material-symbols-outlined animate-spin">sync</span> Saving...';
+            saveBtn.classList.add('opacity-80');
+            setTimeout(() => {
+                saveBtn.innerHTML = '<span class="material-symbols-outlined">check_circle</span> Changes Saved';
+                saveBtn.classList.remove('opacity-80');
+                setTimeout(() => {
+                    saveBtn.innerHTML = originalText;
+                }, 2000);
+            }, 1000);
+        });
+
+        // Simple Toggle Behavior
+        const toggle = document.getElementById('toggle-portal');
+        toggle.addEventListener('change', (e) => {
+            const portalCard = toggle.closest('.bg-white').querySelector('.bg-surface-container-low\\/50');
+            if(e.target.checked) {
+                portalCard.classList.remove('opacity-50');
+            } else {
+                portalCard.classList.add('opacity-50');
+            }
+        });
+    </script>
+</body></html>

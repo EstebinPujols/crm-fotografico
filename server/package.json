@@ -2,10 +2,30 @@
   "name": "crm-fotografico-server",
   "version": "1.0.0",
   "description": "Backend del CRM Fotográfico",
-  "main": "index.js",
+  "main": "src/index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node --watch index.js"
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "migrate": "npx knex migrate:latest",
+    "migrate:rollback": "npx knex migrate:rollback",
+    "seed": "npx knex seed:run",
+    "setup": "npx knex migrate:latest && npx knex seed:run"
   },
-  "private": true
+  "private": true,
+  "dependencies": {
+    "@supabase/supabase-js": "^2.108.2",
+    "@whiskeysockets/baileys": "^7.0.0-rc13",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-validator": "^7.2.1",
+    "jsonwebtoken": "^9.0.2",
+    "knex": "^3.1.0",
+    "morgan": "^1.10.0",
+    "multer": "^2.2.0",
+    "pg": "^8.13.1",
+    "qrcode": "^1.5.4",
+    "uuid": "^11.1.0"
+  }
 }

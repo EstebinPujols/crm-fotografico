@@ -1,13 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Card from '../components/Card';
 import Button from '../components/Button';
+import settingsService from '../services/settingsService';
+import whatsappService from '../services/whatsappService';
 
 // Default initial settings
 const DEFAULT_SETTINGS = {
-  whatsappConnected: true,
-  whatsappNumber: '+1 (555) 0123',
-  apiKey: 'waba_key_live_7294bb8a1c9ef001da',
-  webhookUrl: 'https://api.photocrm.com/v1/webhook/waba_01',
   publicPortalAccess: true,
   brandedDomain: 'portal.yourbrand.com',
   templates: [
@@ -35,7 +33,7 @@ const DEFAULT_SETTINGS = {
 };
 
 export default function Settings() {
-  // Page states
+  // ─── Settings state ──────────────────────────────────────────────────
   const [settings, setSettings] = useState(() => {
     const saved = localStorage.getItem('photocrm_settings');
     if (saved) {
@@ -49,33 +47,95 @@ export default function Settings() {
   });
 
   const [hasChanges, setHasChanges] = useState(false);
-  const [saveStatus, setSaveStatus] = useState('idle'); // idle, saving, saved
-  const [isScanning, setIsScanning] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('idle');
+  const [loadingSettings, setLoadingSettings] = useState(true);
 
-  // Modals state
+  // ─── WhatsApp real state ────────────────────────────────────────────
+  const [waState, setWaState] = useState({
+    status: 'disconnected',
+    qr: null,
+    phone: null,
+    loading: true,
+  });
+
+  // ─── Modals state ──────────────────────────────────────────────────
   const [templateModal, setTemplateModal] = useState({ open: false, mode: 'add', data: null });
   const [userModal, setUserModal] = useState({ open: false, mode: 'add', data: null });
 
-  const handleTogglePortal = () => {
-    const updated = { ...settings, publicPortalAccess: !settings.publicPortalAccess };
-    setSettings(updated);
-    setHasChanges(true);
+  // ─── Cargar settings desde API ──────────────────────────────────────
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        const apiSettings = await settingsService.get();
+        if (apiSettings && Object.keys(apiSettings).length > 0) {
+          setSettings((prev) => {
+            const merged = { ...prev, ...apiSettings };
+            if (typeof merged.minTimeframe === 'string') {
+              merged.minTimeframe = parseInt(merged.minTimeframe, 10);
+            }
+            localStorage.setItem('photocrm_settings', JSON.stringify(merged));
+            return merged;
+          });
+        }
+      } catch (e) {
+        console.warn('No se pudieron cargar settings desde la API:', e.message);
+      } finally {
+        setLoadingSettings(false);
+      }
+    }
+    loadSettings();
+  }, []);
+
+  // ─── Polling de WhatsApp cada 3s ────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const st = await whatsappService.getStatus();
+        if (cancelled) return;
+
+        if (st.status === 'qr') {
+          try {
+            const qr = await whatsappService.getQR();
+            if (!cancelled) setWaState({ status: 'qr', qr, phone: null, loading: false });
+          } catch {
+            if (!cancelled) setWaState({ status: 'qr', qr: null, phone: null, loading: false });
+          }
+        } else {
+          if (!cancelled) setWaState({ status: st.status, qr: null, phone: st.phone || null, loading: false });
+        }
+      } catch {
+        if (!cancelled) setWaState(prev => ({ ...prev, loading: false }));
+      }
+    };
+
+    poll();
+    const interval = setInterval(poll, 3000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
+  // ─── Handlers de WhatsApp ──────────────────────────────────────────
+  const handleWaStart = async () => {
+    setWaState(prev => ({ ...prev, status: 'connecting', loading: true }));
+    try {
+      await whatsappService.start();
+    } catch (e) {
+      console.error(e);
+      setWaState(prev => ({ ...prev, status: 'error', loading: false }));
+    }
   };
 
-  const handleSimulateScan = () => {
-    setIsScanning(true);
-    setTimeout(() => {
-      setSettings((prev) => ({
-        ...prev,
-        whatsappConnected: true,
-        whatsappNumber: '+1 (555) 0123',
-      }));
-      setHasChanges(true);
-      setIsScanning(false);
-    }, 1500);
+  const handleWaLogout = async () => {
+    try {
+      await whatsappService.logout();
+      setWaState({ status: 'disconnected', qr: null, phone: null, loading: false });
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  // Template Handlers
+  // ─── Handlers de Templates ─────────────────────────────────────────
   const handleOpenTemplateModal = (mode, data = null) => {
     setTemplateModal({
       open: true,
@@ -87,9 +147,9 @@ export default function Settings() {
   const handleSaveTemplate = (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    const name = fd.get('name');
-    const description = fd.get('description');
-    const content = fd.get('content');
+    const name = fd.get('name') || '';
+    const description = fd.get('description') || '';
+    const content = fd.get('content') || '';
     const icon = fd.get('icon') || 'chat_bubble';
 
     if (!name || !description) return;
@@ -123,7 +183,7 @@ export default function Settings() {
     setHasChanges(true);
   };
 
-  // User Handlers
+  // ─── Handlers de Usuarios ──────────────────────────────────────────
   const handleOpenUserModal = (mode, data = null) => {
     setUserModal({
       open: true,
@@ -135,14 +195,13 @@ export default function Settings() {
   const handleSaveUser = (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    const name = fd.get('name');
+    const name = fd.get('name') || '';
     const roleSelect = fd.get('role');
     const isAdmin = roleSelect === 'admin';
     const role = isAdmin ? 'Lead Photographer (Admin)' : 'Editor (Standard Access)';
 
     if (!name) return;
 
-    // Get initials
     const words = name.trim().split(' ');
     const initials = words.length > 1
       ? (words[0][0] + words[1][0]).toUpperCase()
@@ -176,144 +235,212 @@ export default function Settings() {
     setHasChanges(true);
   };
 
-  // Global Save
-  const handleSaveChanges = () => {
-    setSaveStatus('saving');
-    setTimeout(() => {
-      localStorage.setItem('photocrm_settings', JSON.stringify(settings));
-      setSaveStatus('saved');
-      setHasChanges(false);
-      setTimeout(() => {
-        setSaveStatus('idle');
-      }, 2000);
-    }, 1200);
+  // ─── Handlers de Portal ────────────────────────────────────────────
+  const handleTogglePortal = () => {
+    const updated = { ...settings, publicPortalAccess: !settings.publicPortalAccess };
+    setSettings(updated);
+    setHasChanges(true);
   };
 
+  // ─── Guardar en API + localStorage ──────────────────────────────────
+  const handleSaveChanges = async () => {
+    setSaveStatus('saving');
+    localStorage.setItem('photocrm_settings', JSON.stringify(settings));
+
+    try {
+      const apiPayload = {
+        studio_name: settings.studio_name,
+        studio_email: settings.studio_email,
+        studio_phone: settings.studio_phone,
+        studio_address: settings.studio_address,
+        currency: settings.currency,
+      };
+      if (settings.minTimeframe !== undefined) {
+        apiPayload.minTimeframe = String(settings.minTimeframe);
+      }
+      await settingsService.update(apiPayload);
+    } catch (e) {
+      console.warn('No se pudieron guardar settings en la API:', e.message);
+    }
+
+    setSaveStatus('saved');
+    setHasChanges(false);
+    setTimeout(() => setSaveStatus('idle'), 2000);
+  };
+
+  // ─── helpers de UI ─────────────────────────────────────────────────
+  // Normalizar estado: Baileys usa 'open', nosotros mostramos 'connected'
+  const waNormalized = waState.status === 'open' ? 'connected' : waState.status;
+
+  const waStatusText = {
+    connected: waState.phone ? `Conectado como ${waState.phone}` : 'Conectado',
+    qr: 'Esperando escaneo del código QR',
+    connecting: 'Conectando…',
+    error: 'Error de conexión',
+    disconnected: 'Desconectado',
+  }[waNormalized] || 'Desconectado';
+
+  const waStatusColor = waNormalized === 'connected' ? 'bg-green-500'
+    : waNormalized === 'qr' || waNormalized === 'connecting' ? 'bg-yellow-400'
+    : 'bg-gray-400';
+
+  const waStatusLabel = waNormalized === 'connected' ? 'Conectado'
+    : waNormalized === 'qr' ? 'Esperando QR'
+    : waNormalized === 'connecting' ? 'Conectando'
+    : 'Desconectado';
+
+  // ─── Render ────────────────────────────────────────────────────────
   return (
     <div className="space-y-ds-lg max-w-2xl mx-auto pb-40 overflow-y-auto h-full">
-      {/* Page Title & Description */}
+      {/* Page Title */}
       <div>
         <h2 className="text-display-lg-mobile md:text-headline-lg font-bold text-primary tracking-tight mb-1">
           Settings
         </h2>
         <p className="text-body-md text-on-surface-variant">
-          Configure your photography workflow and API integrations.
+          Configura tu estudio fotográfico e integraciones.
         </p>
       </div>
 
-      {/* WhatsApp Connection Section */}
+      {/* ═══════════════════════════════════════════════
+          WhatsApp — Conexión real con Baileys
+          ═══════════════════════════════════════════════ */}
       <section className="space-y-ds-sm">
         <div className="flex items-center gap-2 px-1">
-          <span className="material-symbols-outlined text-secondary text-[20px]">qr_code_2</span>
+          <span className="material-symbols-outlined text-secondary text-[20px]">chat</span>
           <h3 className="text-label-sm uppercase tracking-wider text-on-surface-variant font-bold">
-            WhatsApp Connection
+            WhatsApp
           </h3>
         </div>
 
         <Card className="space-y-ds-lg">
-          <div className="flex justify-between items-center">
-            <div>
-              <p className="text-label-md text-primary font-semibold">Connection Status</p>
-              <p className="text-body-md text-on-surface-variant">
-                {settings.whatsappConnected ? `Linked to ${settings.whatsappNumber}` : 'Not connected'}
-              </p>
+          {waState.loading && waState.status === 'disconnected' ? (
+            <div className="flex items-center gap-3 text-sm text-on-surface-variant py-4">
+              <span className="material-symbols-outlined animate-spin">sync</span>
+              Conectando con el servidor WhatsApp…
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 bg-[#F5F5F5] px-3 py-1 rounded-full border border-[#E5E5E5]">
-                <div
-                  className={`w-2 h-2 rounded-full ${
-                    settings.whatsappConnected ? 'bg-green-500' : 'bg-gray-400'
-                  }`}
-                />
-                <span className="text-label-sm text-primary font-medium">
-                  {settings.whatsappConnected ? 'Active' : 'Disconnected'}
-                </span>
-              </div>
-              {settings.whatsappConnected && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSettings({ ...settings, whatsappConnected: false, whatsappNumber: '' });
-                    setHasChanges(true);
-                  }}
-                  className="text-label-md font-medium text-red-500 hover:text-red-700 cursor-pointer"
-                >
-                  Disconnect Device
-                </button>
-              )}
-            </div>
-          </div>
-
-          {!settings.whatsappConnected && (
-            <div className="border-t border-[#E5E5E5] pt-ds-lg flex flex-col md:flex-row items-center gap-ds-lg">
-              {/* QR Code Container */}
-              <div className="relative w-40 h-40 bg-white border border-[#E5E5E5] p-2 rounded-xl flex items-center justify-center shadow-xs flex-shrink-0">
-                {isScanning ? (
-                  <div className="flex flex-col items-center justify-center space-y-ds-sm">
-                    <span className="material-symbols-outlined animate-spin text-secondary text-3xl">sync</span>
-                    <span className="text-[10px] font-label-md text-on-surface-variant">Linking device...</span>
-                  </div>
-                ) : (
-                  <div className="w-full h-full flex flex-col justify-between items-center relative opacity-90 hover:opacity-100 transition-opacity">
-                    {/* Simulated QR Code using CSS grid */}
-                    <div className="grid grid-cols-4 gap-1 w-full h-full p-1">
-                      <div className="border-2 border-black rounded-xs bg-black m-0.5"></div>
-                      <div className="border border-gray-300 rounded-xs bg-transparent m-0.5"></div>
-                      <div className="border border-gray-300 rounded-xs bg-black m-0.5"></div>
-                      <div className="border-2 border-black rounded-xs bg-black m-0.5"></div>
-
-                      <div className="border border-gray-300 rounded-xs bg-transparent m-0.5"></div>
-                      <div className="border border-gray-300 rounded-xs bg-black m-0.5"></div>
-                      <div className="border border-gray-300 rounded-xs bg-transparent m-0.5"></div>
-                      <div className="border border-gray-300 rounded-xs bg-transparent m-0.5"></div>
-
-                      <div className="border border-gray-300 rounded-xs bg-black m-0.5"></div>
-                      <div className="border border-gray-300 rounded-xs bg-transparent m-0.5"></div>
-                      <div className="border border-gray-300 rounded-xs bg-black m-0.5"></div>
-                      <div className="border border-gray-300 rounded-xs bg-black m-0.5"></div>
-
-                      <div className="border-2 border-black rounded-xs bg-black m-0.5"></div>
-                      <div className="border border-gray-300 rounded-xs bg-transparent m-0.5"></div>
-                      <div className="border border-gray-300 rounded-xs bg-black m-0.5"></div>
-                      <div className="border-2 border-black rounded-xs bg-black m-0.5"></div>
-                    </div>
-                    {/* Center WhatsApp icon mock */}
-                    <div className="absolute inset-0 m-auto w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm border border-[#E5E5E5]">
-                      <span className="material-symbols-outlined text-green-600 text-lg">chat</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Instructions */}
-              <div className="flex-1 space-y-ds-md text-left w-full">
+          ) : (
+            <>
+              {/* ─── Estado ──────────────────────────────── */}
+              <div className="flex justify-between items-center">
                 <div>
-                  <h4 className="text-label-md text-primary font-semibold">Link your WhatsApp account</h4>
-                  <p className="text-body-md text-on-surface-variant">
-                    Use your phone to scan this QR code and link your WhatsApp instance to PhotoCRM.
-                  </p>
+                  <p className="text-label-md text-primary font-semibold">Estado</p>
+                  <p className="text-body-md text-on-surface-variant mt-0.5">{waStatusText}</p>
                 </div>
-                
-                <ol className="text-body-md text-on-surface-variant list-decimal list-inside space-y-1 pl-1">
-                  <li>Open WhatsApp on your phone</li>
-                  <li>Go to <strong className="text-primary">Linked Devices</strong> in settings</li>
-                  <li>Tap <strong className="text-primary">Link a Device</strong> and scan the code</li>
-                </ol>
-
-                <Button
-                  onClick={handleSimulateScan}
-                  disabled={isScanning}
-                  className="w-full md:w-auto text-xs"
-                >
-                  {isScanning ? 'Connecting...' : 'Simulate Scan to Connect'}
-                </Button>
+                <div className="flex items-center gap-2 bg-[#F5F5F5] px-3 py-1 rounded-full border border-[#E5E5E5]">
+                  <div className={`w-2 h-2 rounded-full ${waStatusColor}`} />
+                  <span className="text-label-sm text-primary font-medium">{waStatusLabel}</span>
+                </div>
               </div>
-            </div>
+
+              {/* ─── QR pendiente ────────────────────────── */}
+              {waState.status === 'qr' && (
+                <div className="border-t border-[#E5E5E5] pt-ds-lg">
+                  <p className="text-body-md text-on-surface-variant mb-3">
+                    Escanea este código QR con WhatsApp en tu teléfono:
+                  </p>
+                  <p className="text-xs text-on-surface-variant mb-3">
+                    Abre WhatsApp → Menú (⋮) → Dispositivos vinculados → Vincular un dispositivo
+                  </p>
+                  {waState.qr ? (
+                    <div className="bg-white rounded-lg p-3 border border-[#E5E5E5] inline-block mb-4">
+                      <img src={waState.qr} alt="WhatsApp QR" className="w-48 h-48" />
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-sm text-on-surface-variant mb-4">
+                      <span className="material-symbols-outlined animate-spin">sync</span>
+                      Generando código QR…
+                    </div>
+                  )}
+                  <div>
+                    <Button onClick={handleWaStart} variant="secondary">
+                      <span className="material-symbols-outlined text-[16px]">refresh</span>
+                      Regenerar QR
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* ─── Desconectado / Error ────────────────── */}
+              {(waState.status === 'disconnected' || waState.status === 'error') && (
+                <div className="border-t border-[#E5E5E5] pt-ds-lg">
+                  <Button onClick={handleWaStart}>
+                    <span className="material-symbols-outlined text-[16px]">power</span>
+                    Conectar WhatsApp
+                  </Button>
+                </div>
+              )}
+
+              {/* ─── Conectado ───────────────────────────── */}
+              {waNormalized === 'connected' && (
+                <div className="border-t border-[#E5E5E5] pt-ds-lg flex justify-between items-center">
+                  <p className="text-body-md text-on-surface-variant">
+                    ✅ Los mensajes entrantes se sincronizarán automáticamente con el CRM.
+                  </p>
+                  <button
+                    onClick={handleWaLogout}
+                    className="text-label-md font-medium text-red-500 hover:text-red-700 cursor-pointer whitespace-nowrap"
+                  >
+                    Desconectar
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </Card>
       </section>
 
-      {/* Client Portal Section */}
+      {/* ═══════════════════════════════════════════════
+          Calendar Configuration
+          ═══════════════════════════════════════════════ */}
+      <section className="space-y-ds-sm">
+        <div className="flex items-center gap-2 px-1">
+          <span className="material-symbols-outlined text-secondary text-[20px]">schedule</span>
+          <h3 className="text-label-sm uppercase tracking-wider text-on-surface-variant font-bold">
+            Calendar Configuration
+          </h3>
+        </div>
+
+        <Card className="space-y-ds-lg">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-label-md text-primary font-semibold">Calendar Timeframe Limit</p>
+              <p className="text-body-md text-on-surface-variant mt-1">
+                Define el intervalo mínimo obligatorio entre citas consecutivas.
+                Esta validación se aplica <strong>del lado del servidor</strong>.
+              </p>
+            </div>
+          </div>
+
+          <div className="border-t border-[#E5E5E5] pt-ds-lg">
+            <label className="text-label-md text-primary font-semibold block mb-2">
+              Intervalo mínimo entre citas
+            </label>
+            <select
+              value={settings.minTimeframe ?? 30}
+              onChange={(e) => {
+                setSettings({ ...settings, minTimeframe: parseInt(e.target.value, 10) });
+                setHasChanges(true);
+              }}
+              className="w-full h-10 px-ds-md rounded-xl border border-[#E5E5E5] font-body-md text-body-md bg-white focus:ring-1 focus:ring-black"
+            >
+              <option value={15}>15 minutos</option>
+              <option value={30}>30 minutos</option>
+              <option value={45}>45 minutos</option>
+              <option value={60}>60 minutos</option>
+              <option value={90}>90 minutos</option>
+              <option value={120}>120 minutos</option>
+            </select>
+            <p className="text-body-md text-on-surface-variant mt-2">
+              El buscador de espacios disponibles usará este valor como tamaño de paso.
+            </p>
+          </div>
+        </Card>
+      </section>
+
+      {/* ═══════════════════════════════════════════════
+          Client Portal
+          ═══════════════════════════════════════════════ */}
       <section className="space-y-ds-sm">
         <div className="flex items-center gap-2 px-1">
           <span className="material-symbols-outlined text-secondary text-[20px]">grid_view</span>
@@ -355,31 +482,29 @@ export default function Settings() {
               <p className="text-label-md text-primary font-semibold">Branded Domain</p>
               <p className="text-body-md text-on-surface-variant mb-2 md:mb-0">Configure custom URL access</p>
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                className="h-10 px-ds-md rounded-xl border border-[#E5E5E5] font-body-md text-body-md bg-white w-full md:w-64 focus:ring-1 focus:ring-black"
-                type="text"
-                disabled={!settings.publicPortalAccess}
-                value={settings.brandedDomain || ''}
-                onChange={(e) => {
-                  setSettings({ ...settings, brandedDomain: e.target.value });
-                  setHasChanges(true);
-                }}
-              />
-            </div>
+            <input
+              className="h-10 px-ds-md rounded-xl border border-[#E5E5E5] font-body-md text-body-md bg-white w-full md:w-64 focus:ring-1 focus:ring-black"
+              type="text"
+              disabled={!settings.publicPortalAccess}
+              value={settings.brandedDomain || ''}
+              onChange={(e) => {
+                setSettings({ ...settings, brandedDomain: e.target.value });
+                setHasChanges(true);
+              }}
+            />
           </div>
         </Card>
       </section>
 
-      {/* Message Templates */}
+      {/* ═══════════════════════════════════════════════
+          Message Templates
+          ═══════════════════════════════════════════════ */}
       <section className="space-y-ds-sm">
-        <div className="flex items-center gap-2 px-1 justify-between">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-secondary text-[20px]">chat_bubble</span>
-            <h3 className="text-label-sm uppercase tracking-wider text-on-surface-variant font-bold">
-              Message Templates
-            </h3>
-          </div>
+        <div className="flex items-center gap-2 px-1">
+          <span className="material-symbols-outlined text-secondary text-[20px]">chat_bubble</span>
+          <h3 className="text-label-sm uppercase tracking-wider text-on-surface-variant font-bold">
+            Message Templates
+          </h3>
         </div>
 
         <div className="space-y-ds-sm">
@@ -425,7 +550,9 @@ export default function Settings() {
         </div>
       </section>
 
-      {/* User Permissions */}
+      {/* ═══════════════════════════════════════════════
+          User Permissions
+          ═══════════════════════════════════════════════ */}
       <section className="space-y-ds-sm">
         <div className="flex items-center gap-2 px-1">
           <span className="material-symbols-outlined text-secondary text-[20px]">admin_panel_settings</span>
@@ -484,7 +611,9 @@ export default function Settings() {
         </Card>
       </section>
 
-      {/* Floating Save Button */}
+      {/* ═══════════════════════════════════════════════
+          Floating Save Button
+          ═══════════════════════════════════════════════ */}
       {(hasChanges || saveStatus !== 'idle') && (
         <div className="fixed bottom-20 md:bottom-8 left-0 md:left-auto md:right-8 w-full md:w-64 px-ds-margin-mobile md:px-0 z-40 animate-in fade-in slide-in-from-bottom-4 duration-300">
           <button
@@ -514,7 +643,9 @@ export default function Settings() {
         </div>
       )}
 
-      {/* Template Modal */}
+      {/* ═══════════════════════════════════════════════
+          Template Modal
+          ═══════════════════════════════════════════════ */}
       {templateModal.open && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-xl border border-[#E5E5E5] p-ds-lg max-w-md w-full shadow-lg space-y-ds-md animate-in zoom-in-95 duration-150">
@@ -549,7 +680,7 @@ export default function Settings() {
                 <input
                   name="description"
                   required
-                  placeholder="e.g. Sent after deposit payment"
+                  placeholder="e.g. Sent after booking confirmed"
                   defaultValue={templateModal.data?.description || ''}
                   className="w-full h-10 px-ds-md rounded-xl border border-[#E5E5E5] font-body-md text-body-md"
                   type="text"
@@ -560,9 +691,10 @@ export default function Settings() {
                 <label className="text-label-md text-primary font-semibold block">Message Content</label>
                 <textarea
                   name="content"
-                  placeholder="Hi {{client_name}}..."
-                  defaultValue={templateModal.data?.content || ''}
+                  required
                   rows={4}
+                  placeholder="Write your template message with variables like {{client_name}}"
+                  defaultValue={templateModal.data?.content || ''}
                   className="w-full p-ds-md rounded-xl border border-[#E5E5E5] font-body-md text-body-md focus:outline-none focus:ring-1 focus:ring-black resize-none"
                 />
               </div>
@@ -586,6 +718,7 @@ export default function Settings() {
                 <Button
                   variant="secondary"
                   onClick={() => setTemplateModal({ open: false, mode: 'add', data: null })}
+                  type="button"
                 >
                   Cancel
                 </Button>
@@ -596,7 +729,9 @@ export default function Settings() {
         </div>
       )}
 
-      {/* User Modal */}
+      {/* ═══════════════════════════════════════════════
+          User Modal
+          ═══════════════════════════════════════════════ */}
       {userModal.open && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-xl border border-[#E5E5E5] p-ds-lg max-w-sm w-full shadow-lg space-y-ds-md animate-in zoom-in-95 duration-150">
@@ -642,6 +777,7 @@ export default function Settings() {
                 <Button
                   variant="secondary"
                   onClick={() => setUserModal({ open: false, mode: 'add', data: null })}
+                  type="button"
                 >
                   Cancel
                 </Button>

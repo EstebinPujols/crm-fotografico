@@ -3,3 +3,7 @@ node_modules
 *.log
 dist
 .vite
+whatsapp_auth/
+uploads/*
+!uploads/.gitkeep
+*.local

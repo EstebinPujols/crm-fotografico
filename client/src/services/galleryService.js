@@ -1,206 +1,141 @@
 /**
- * galleryService.js — Capa de datos para galerías.
+ * ═══════════════════════════════════════════════
+ *  galleryService.js — SERVICIO DE GALERÍAS
+ * ═══════════════════════════════════════════════
  *
- * Arquitectura preparada para backend:
- * - Las funciones son async y devuelven Promises.
- * - Los parámetros y tipos de retorno son idénticos a los que usaría una API REST.
- * - Cuando llegue el back, solo cambias la implementación interna de cada función.
+ *  🎯 TU TAREA: Reemplazar localStorage por llamadas a la API
+ *
+ *  ANTES: Este archivo guardaba galerías en localStorage con datos mock
+ *  AHORA: Debe conectar al backend real usando apiClient
+ *
+ *  📚 LO QUE NECESITAS SABER:
+ *
+ *  - `api` es el cliente de Axios que configuraste en apiClient.js
+ *  - Cada función debe hacer una petición HTTP al backend
+ *  - El backend responde con { data: [...], pagination: {...} } en listas
+ *    y con el objeto directamente en getById
+ *
+ *  📡 ENDPOINTS DISPONIBLES:
+ *
+ *    GET    /api/galleries?status=&search=&page=&limit=
+ *    GET    /api/galleries/:id
+ *    POST   /api/galleries          body: { client_id, title, status, project_id }
+ *    PUT    /api/galleries/:id       body: { title, status }
+ *    DELETE /api/galleries/:id
+ *
+ *  🔍 PISTAS para cada función:
+ *
+ *    getAll(filters):
+ *      const params = {}
+ *      if (filters.status) params.status = filters.status
+ *      if (filters.search) params.search = filters.search
+ *      const response = await api.get('/galleries', { params })
+ *      return response.data  // { data: [...], pagination: {...} }
+ *
+ *    getById(id):
+ *      const response = await api.get(`/galleries/${id}`)
+ *      return response.data  // el objeto galería
+ *
+ *    create(data):
+ *      const response = await api.post('/galleries', data)
+ *      return response.data
+ *
+ *    update(id, data):
+ *      const response = await api.put(`/galleries/${id}`, data)
+ *      return response.data
+ *
+ *    delete(id):
+ *      await api.delete(`/galleries/${id}`)
+ *      return true
+ *
+ *  ⚠️ ERRORES COMUNES DE NOVATO:
+ *  - Olvidar el await — las peticiones HTTP son asíncronas
+ *  - Confundir response.data con el objeto que necesitas
+ *    (Axios envuelve la respuesta, la data real está en response.data)
+ *  - No mandar los parámetros correctos al GET (usa { params })
+ *  - Olvidar las backticks `` en las URLs con variables
+ *
+ * ─────────────────────────────────────────────
+ *  ¡Manos a la obra! Escribe tu código abajo 👇
+ * ─────────────────────────────────────────────
  */
 
-const STORAGE_KEY = 'photocrm_galleries';
-
-// ---------- Datos mock iniciales ----------
-const SEED_GALLERIES = [
-  {
-    id: 'g1',
-    name: 'Boda Maria & Carlos',
-    clientName: 'Maria Gomez',
-    description: 'Ceremonia en la playa, recepción en el jardín. 120 invitados.',
-    date: '2026-05-15',
-    status: 'active',
-    coverPhoto: '',
-    photoCount: 184,
-    clientPortalUrl: 'https://portal.photocrm.com/g/maria-carlos',
-    tags: ['boda', 'playa', 'outdoor'],
-    createdAt: '2026-04-20T10:00:00Z',
-    updatedAt: '2026-05-16T08:30:00Z',
-  },
-  {
-    id: 'g2',
-    name: 'Sesión de Retratos — Vance',
-    clientName: 'Emma Vance',
-    description: 'Retratos corporativos para perfil profesional y redes sociales.',
-    date: '2026-06-01',
-    status: 'active',
-    coverPhoto: '',
-    photoCount: 42,
-    clientPortalUrl: 'https://portal.photocrm.com/g/emma-vance',
-    tags: ['retrato', 'corporativo', 'estudio'],
-    createdAt: '2026-05-25T14:00:00Z',
-    updatedAt: '2026-06-02T11:00:00Z',
-  },
-  {
-    id: 'g3',
-    name: 'Bautizo — Familia Rodríguez',
-    clientName: 'Ana Rodríguez',
-    description: 'Bautizo en la Iglesia San José. Recepción en casa de la abuela.',
-    date: '2026-04-10',
-    status: 'archived',
-    coverPhoto: '',
-    photoCount: 98,
-    clientPortalUrl: '',
-    tags: ['bautizo', 'iglesia', 'familia'],
-    createdAt: '2026-03-28T09:00:00Z',
-    updatedAt: '2026-04-12T18:00:00Z',
-  },
-  {
-    id: 'g4',
-    name: 'Graduación UASD 2026',
-    clientName: 'Carlos Méndez',
-    description: 'Sesión de graduación en el campus universitario.',
-    date: '2026-07-20',
-    status: 'draft',
-    coverPhoto: '',
-    photoCount: 0,
-    clientPortalUrl: '',
-    tags: ['graduación', 'universidad', 'outdoor'],
-    createdAt: '2026-07-10T16:00:00Z',
-    updatedAt: '2026-07-10T16:00:00Z',
-  },
-  {
-    id: 'g5',
-    name: 'Evento Corporativo — TechConf',
-    clientName: 'TechConf RD',
-    description: 'Cobertura fotográfica del evento anual de tecnología.',
-    date: '2026-06-28',
-    status: 'active',
-    coverPhoto: '',
-    photoCount: 256,
-    clientPortalUrl: 'https://portal.photocrm.com/g/techconf',
-    tags: ['evento', 'corporativo', 'conferencia'],
-    createdAt: '2026-06-15T11:00:00Z',
-    updatedAt: '2026-06-29T09:00:00Z',
-  },
-];
-
-// ---------- Helpers internos ----------
-
-function loadAll() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {
-    console.error('galleryService: error parsing localStorage', e);
-  }
-  // Primera vez: sembrar datos mock
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(SEED_GALLERIES));
-  return [...SEED_GALLERIES];
-}
-
-function persist(galleries) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(galleries));
-}
-
-function generateId() {
-  return `g_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-}
-
-// ---------- API Pública (async, lista para backend) ----------
+import api from './apiClient';
 
 const galleryService = {
   /**
    * Obtener todas las galerías, opcionalmente filtradas.
+   *
+   * ANTES: localStorage con datos mock
+   * AHORA: GET /api/galleries con filtros
+   *
    * @param {Object} filters - { status?: string, search?: string }
-   * @returns {Promise<Array>}
+   * @returns {Promise<{data: Array, pagination: Object}>}
    */
   async getAll(filters = {}) {
-    // Simula latencia de red
-    await new Promise((r) => setTimeout(r, 100));
-    let list = loadAll();
-
-    if (filters.status && filters.status !== 'all') {
-      list = list.filter((g) => g.status === filters.status);
-    }
-
-    if (filters.search) {
-      const q = filters.search.toLowerCase();
-      list = list.filter(
-        (g) =>
-          g.name.toLowerCase().includes(q) ||
-          g.clientName.toLowerCase().includes(q) ||
-          g.tags.some((t) => t.toLowerCase().includes(q))
-      );
-    }
-
-    return list.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    const params = {};
+    if (filters.status) params.status = filters.status;
+    if (filters.search) params.search = filters.search;
+    if (filters.page) params.page = filters.page;
+    if (filters.limit) params.limit = filters.limit;
+    const response = await api.get('/galleries', { params });
+    return response.data; // { data: [], pagination: {} }
   },
 
   /**
    * Obtener una galería por ID.
+   *
+   * ANTES: buscar en array de localStorage
+   * AHORA: GET /api/galleries/:id
+   *
    * @param {string} id
    * @returns {Promise<Object|null>}
    */
   async getById(id) {
-    await new Promise((r) => setTimeout(r, 50));
-    const list = loadAll();
-    return list.find((g) => g.id === id) || null;
+    const response = await api.get(`/galleries/${id}`);
+    return response.data;
   },
 
   /**
    * Crear una nueva galería.
-   * @param {Object} data - { name, clientName, description, date?, tags?, status? }
-   * @returns {Promise<Object>} La galería creada
+   *
+   * ANTES: push a array + guardar en localStorage
+   * AHORA: POST /api/galleries con los datos
+   *
+   * @param {Object} data - { client_id, title, status?, project_id? }
+   * @returns {Promise<Object>}
    */
   async create(data) {
-    await new Promise((r) => setTimeout(r, 200));
-    const list = loadAll();
-    const now = new Date().toISOString();
-    const newGallery = {
-      id: generateId(),
-      name: data.name,
-      clientName: data.clientName || '',
-      description: data.description || '',
-      date: data.date || now.split('T')[0],
-      status: data.status || 'draft',
-      coverPhoto: data.coverPhoto || '',
-      photoCount: 0,
-      clientPortalUrl: '',
-      tags: data.tags || [],
-      createdAt: now,
-      updatedAt: now,
-    };
-    list.unshift(newGallery);
-    persist(list);
-    return newGallery;
+    const response = await api.post('/galleries', data);
+    return response.data;
   },
 
   /**
    * Actualizar una galería existente.
+   *
+   * ANTES: modificar en array + guardar en localStorage
+   * AHORA: PUT /api/galleries/:id
+   *
    * @param {string} id
-   * @param {Object} data - Campos a actualizar (parcial)
-   * @returns {Promise<Object|null>}
+   * @param {Object} data - Campos a actualizar
+   * @returns {Promise<Object>}
    */
   async update(id, data) {
-    await new Promise((r) => setTimeout(r, 200));
-    const list = loadAll();
-    const idx = list.findIndex((g) => g.id === id);
-    if (idx === -1) return null;
-    list[idx] = { ...list[idx], ...data, updatedAt: new Date().toISOString() };
-    persist(list);
-    return list[idx];
+    const response = await api.put(`/galleries/${id}`, data);
+    return response.data;
   },
 
   /**
    * Eliminar una galería.
+   *
+   * ANTES: filtrar array + guardar en localStorage
+   * AHORA: DELETE /api/galleries/:id
+   *
    * @param {string} id
    * @returns {Promise<boolean>}
    */
   async delete(id) {
-    await new Promise((r) => setTimeout(r, 150));
-    let list = loadAll();
-    const filtered = list.filter((g) => g.id !== id);
-    if (filtered.length === list.length) return false;
-    persist(filtered);
+    await api.delete(`/galleries/${id}`);
     return true;
   },
 };

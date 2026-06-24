@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { getSession } from '../services/authService';
 
 export default function Layout({ children }) {
   const location = useLocation();
@@ -14,8 +15,22 @@ export default function Layout({ children }) {
     { name: 'Settings', path: '/settings', icon: 'settings' },
   ];
 
-  const profileImage =
-    'https://lh3.googleusercontent.com/aida-public/AB6AXuDOgP52TfTZcw4MiWKXbvbM5iEvyiB58GFdF3I_FUcvIEup8roeAB2qmqQ68HuRAn1DyNoC0pnBnGftLtHk1uT-PE6y08YNiZWqDm4RSCyLCMMC-T5jfy6qb1GAw75fEEA4xbbKAhQsEdhuU9YJXzylHTCjRoZ0sewKwMbon_T04px5TogyS1GPzAGtS9vxNCQJJxondWVsuyepXO8SHRT62oPCEOBXb1irOJAkWnCfkP0-QquZCnYS4WIRT6TeCU86P18a9_aiNc0';
+  const [user, setUser] = useState(null);
+
+  // Cargar usuario autenticado al montar el componente
+  useEffect(() => {
+    async function loadUser() {
+      try {
+        const { session } = await getSession();
+        if (session?.user) {
+          setUser(session.user);
+        }
+      } catch (e) {
+        console.warn('No se pudo cargar el usuario:', e.message);
+      }
+    }
+    loadUser();
+  }, []);
 
   const isActive = (path) => {
     if (path === '/') {
@@ -37,12 +52,8 @@ export default function Layout({ children }) {
           </button>
           <h1 className="font-bold text-2xl text-[#735c00]">PhotoCRM</h1>
         </div>
-        <div className="w-8 h-8 rounded-full bg-surface-container-highest overflow-hidden border border-[#E5E5E5]">
-          <img
-            alt="Profile"
-            className="w-full h-full object-cover"
-            src={profileImage}
-          />
+        <div className="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center border border-[#E5E5E5] text-on-surface-variant">
+          <span className="material-symbols-outlined text-sm">person</span>
         </div>
       </header>
 
@@ -114,16 +125,10 @@ export default function Layout({ children }) {
 
         {/* Profile section in desktop sidebar */}
         <div className="flex items-center gap-3 p-2 bg-[#F5F5F5] rounded-xl border border-[#E5E5E5]">
-          <div className="w-9 h-9 rounded-full bg-surface-container-highest overflow-hidden border border-[#E5E5E5] flex-shrink-0">
-            <img
-              alt="Profile"
-              className="w-full h-full object-cover"
-              src={profileImage}
-            />
-          </div>
           <div className="min-w-0 flex-1">
-            <p className="font-label-md text-xs font-semibold text-primary truncate">Emma Vance</p>
-            <p className="font-body-md text-[10px] text-on-surface-variant truncate">Creative Director</p>
+            <p className="font-label-md text-xs font-semibold text-primary truncate">
+              {user?.name || 'Usuario'}
+            </p>
           </div>
           <span className="material-symbols-outlined text-on-surface-variant text-sm cursor-pointer hover:text-primary">logout</span>
         </div>
