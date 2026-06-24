@@ -66,6 +66,12 @@ const messageService = {
     return response.data;
   },
 
+  /** Crear cliente desde número de teléfono */
+  async createClient(data) {
+    const response = await api.post('/messages/create-client', data);
+    return response.data;
+  },
+
   /** Resolver un LID a número de teléfono real */
   async resolveLid(lid, phone) {
     const response = await api.post('/lid/resolve', { lid, phone });

@@ -35,9 +35,8 @@ function formatTime(dateStr) {
 
 // ─── Media renderer ──────────────────────────────────────────────────────────
 function MediaBlock({ media }) {
-  if (!media) return null;
-  const fullUrl = media.url?.startsWith('http') ? media.url : `/uploads/whatsapp/${media.type || 'images'}/${media.url?.split('/').pop() || ''}`;
-  if (!fullUrl || fullUrl === '/uploads/whatsapp//') return null;
+  if (!media?.url) return null;
+  const fullUrl = media.url?.startsWith('http') ? media.url : media.url;
 
   if (media.type === 'image') {
     return (
@@ -86,6 +85,7 @@ export default function MessagesPage() {
   const [clientResults, setClientResults] = useState([]);
   const [resolving, setResolving] = useState(null); // phone being resolved
   const [resolveInput, setResolveInput] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   const messagesEnd = useRef(null);
   const fileRef = useRef(null);
@@ -192,6 +192,26 @@ export default function MessagesPage() {
       setResolveInput('');
       await loadConvs(true);
       if (selectedPhone) await loadMsgs(selectedPhone);
+    } catch (e) { console.error(e); }
+  };
+
+  // ─── Eliminar conversación ──────────────────────────────────────────────
+  const handleDeleteConv = async () => {
+    if (!confirmDelete) return;
+    try {
+      await messageService.deleteConversation(confirmDelete);
+      setConfirmDelete(null);
+      if (selectedPhone === confirmDelete) setSelectedPhone(null);
+      await loadConvs(true);
+    } catch (e) { console.error(e); }
+  };
+
+  // ─── Crear cliente desde número ─────────────────────────────────────────
+  const handleCreateClient = async () => {
+    if (!selectedPhone) return;
+    try {
+      await messageService.createClient({ phone: selectedPhone });
+      await loadConvs(true);
     } catch (e) { console.error(e); }
   };
 
@@ -317,11 +337,23 @@ export default function MessagesPage() {
               <div className="text-[11px] text-on-surface-variant">{selectedPhone}</div>
             </div>
           </div>
-          <button onClick={() => setLinkClientOpen(!linkClientOpen)}
-            className="px-3 py-1.5 text-xs bg-[#f5f5f5] border border-[#E5E5E5] text-on-surface-variant rounded-xl hover:bg-[#eee] transition-colors flex items-center gap-1">
-            <span className="material-symbols-outlined text-[14px]">link</span>
-            Cliente
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => setConfirmDelete(selectedPhone)}
+              className="px-2 py-1.5 text-xs text-on-surface-variant hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-1">
+              <span className="material-symbols-outlined text-[15px]">delete</span>
+            </button>
+            {!conv?.client_name && (
+              <button onClick={handleCreateClient}
+                className="px-2 py-1.5 text-xs text-on-surface-variant hover:text-[#735c00] hover:bg-[#fed65b]/20 rounded-lg transition-colors flex items-center gap-1">
+                <span className="material-symbols-outlined text-[15px]">person_add</span>
+              </button>
+            )}
+            <button onClick={() => setLinkClientOpen(!linkClientOpen)}
+              className="px-3 py-1.5 text-xs bg-[#f5f5f5] border border-[#E5E5E5] text-on-surface-variant rounded-xl hover:bg-[#eee] transition-colors flex items-center gap-1">
+              <span className="material-symbols-outlined text-[14px]">link</span>
+              Cliente
+            </button>
+          </div>
         </div>
 
         {/* Link client */}
@@ -412,10 +444,42 @@ export default function MessagesPage() {
     );
   }
 
+  // ─── Confirmación de borrado ────────────────────────────────────────────
+  function DeleteConfirm() {
+    if (!confirmDelete) return null;
+    const name = conversations.find(c => c.phone === confirmDelete)?.client_name || formatPhone(confirmDelete);
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setConfirmDelete(null)}>
+        <div className="bg-white rounded-xl shadow-xl border border-[#E5E5E5] p-5 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center gap-3 mb-3">
+            <span className="material-symbols-outlined text-red-500 text-2xl">warning</span>
+            <h4 className="font-bold text-primary text-lg">Eliminar conversación</h4>
+          </div>
+          <p className="text-sm text-on-surface-variant mb-4">
+            ¿Eliminar todos los mensajes con <strong className="text-primary">{name}</strong>? Esta acción no se puede deshacer.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setConfirmDelete(null)}
+              className="px-4 py-2 text-sm bg-[#f5f5f5] border border-[#E5E5E5] rounded-xl hover:bg-[#eee] transition-colors">
+              Cancelar
+            </button>
+            <button onClick={handleDeleteConv}
+              className="px-4 py-2 text-sm bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors">
+              Eliminar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-full overflow-hidden bg-surface rounded-xl border border-[#E5E5E5]">
+    <>
+      <DeleteConfirm />
+      <div className="flex h-full overflow-hidden bg-surface rounded-xl border border-[#E5E5E5]">
       <ConvSidebar />
       <MsgPanel />
     </div>
+    </>
   );
 }

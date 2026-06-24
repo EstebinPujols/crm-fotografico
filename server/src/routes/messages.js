@@ -374,6 +374,42 @@ router.post('/link-client', async (req, res, next) => {
   }
 });
 
+// ─── POST /api/messages/create-client — Crear cliente desde número ─────────────
+
+router.post('/create-client', async (req, res, next) => {
+  try {
+    const { phone, first_name, last_name } = req.body;
+    if (!phone) {
+      return res.status(400).json({ error: 'phone requerido' });
+    }
+
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    const name = first_name || `Cliente ${cleanPhone.slice(-4)}`;
+
+    const { data: newClient, error } = await db
+      .from('clients')
+      .insert({ first_name: name, last_name: last_name || '', phone: cleanPhone })
+      .select('id')
+      .limit(1);
+
+    if (error) throw error;
+
+    if (newClient?.length) {
+      // Vincular automáticamente los mensajes de este teléfono
+      await db
+        .from('whatsapp_messages')
+        .update({ client_id: newClient[0].id })
+        .eq('phone', phone)
+        .is('client_id', null);
+    }
+
+    console.log(`[Messages] Cliente creado desde teléfono ${phone}: ${name} (ID ${newClient?.[0]?.id})`);
+    res.json({ success: true, client: newClient?.[0] || null });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ─── DELETE /api/messages/conversation/:phone ─────────────────────────────
 
 router.delete('/conversation/:phone', requireRole('admin'), async (req, res, next) => {

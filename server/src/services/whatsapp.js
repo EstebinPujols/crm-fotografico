@@ -139,6 +139,14 @@ const UPLOAD_DIRS = {
   document: path.join(__dirname, '../../uploads/whatsapp/documents'),
 };
 
+// Nombre de directorio URL para cada tipo (con match de subdirectorios)
+const URL_DIRS = {
+  image: 'images',
+  audio: 'audio',
+  video: 'video',
+  document: 'documents',
+};
+
 // Asegurar que existen
 for (const dir of Object.values(UPLOAD_DIRS)) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -200,7 +208,8 @@ async function downloadMedia(msg) {
     fs.writeFileSync(filePath, buffer);
 
     // URL relativa para servir via Express static
-    const mediaUrl = `/uploads/whatsapp/${mediaType}s/${fileName}`;
+    const urlDir = URL_DIRS[mediaType] || `${mediaType}s`;
+    const mediaUrl = `/uploads/whatsapp/${urlDir}/${fileName}`;
 
     console.log(`[WhatsApp] Media descargado: ${mediaUrl} (${(buffer.length / 1024).toFixed(1)}KB)`);
 
