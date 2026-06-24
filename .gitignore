@@ -5,6 +5,6 @@ dist
 .vite
 whatsapp_auth/
 # Excluir contenido de uploads pero mantener estructura de directorios
-uploads/**/*
-!uploads/**/.gitkeep
+server/uploads/**/*
+!server/uploads/**/.gitkeep
 *.local
