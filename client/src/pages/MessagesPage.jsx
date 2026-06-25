@@ -135,11 +135,8 @@ function ConvSidebar({ search, setSearch, conversations, selectedPhone, onSelect
 function MsgPanel({
   selectedPhone, conversations,
   resolving, setResolving, resolveInput, setResolveInput,
-  handleResolve, handleCreateClient, handleSend,
+  handleResolve, handleCreateClient, onOpenLinkModal, handleSend,
   sendText, setSendText, sending, setSending,
-  linkClientOpen, setLinkClientOpen,
-  linkClientSearch, linkClientSearchFn,
-  clientResults, handleLink,
   confirmDelete, setConfirmDelete,
   fileRef, resolveRef, messagesEnd,
   messages, loadMsgs, loadConvs,
@@ -209,33 +206,13 @@ function MsgPanel({
               <span className="material-symbols-outlined text-[15px]">person_add</span>
             </button>
           )}
-          <button onClick={() => setLinkClientOpen(!linkClientOpen)}
+          <button onClick={onOpenLinkModal}
             className="px-3 py-1.5 text-xs bg-[#f5f5f5] border border-[#E5E5E5] text-on-surface-variant rounded-xl hover:bg-[#eee] transition-colors flex items-center gap-1">
             <span className="material-symbols-outlined text-[14px]">link</span>
             Cliente
           </button>
         </div>
       </div>
-
-      {/* Link client */}
-      {linkClientOpen && (
-        <div className="px-4 py-2 border-b border-[#E5E5E5] bg-[#fafafa]">
-          <input value={linkClientSearch} onChange={e => linkClientSearchFn(e.target.value)}
-            placeholder="Buscar cliente…"
-            className="w-full h-9 px-3 rounded-xl border border-[#E5E5E5] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#fed65b]" />
-          {clientResults.length > 0 && (
-            <div className="mt-1 max-h-36 overflow-y-auto border border-[#E5E5E5] rounded-lg bg-white">
-              {clientResults.map(c => (
-                <button key={c.id} onClick={() => handleLink(c.id)}
-                  className="w-full text-left px-3 py-2 text-sm text-primary hover:bg-[#f5f5f5] transition-colors">
-                  {c.first_name} {c.last_name}
-                  {c.phone && <span className="text-on-surface-variant ml-2 text-xs">{c.phone}</span>}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 min-h-0 bg-[#f5f5f5]">
@@ -294,6 +271,73 @@ function MsgPanel({
   );
 }
 
+// ─── Modal: Vincular cliente existente ──────────────────────────────────────
+function LinkClientModal({ open, phone, onClose, onLinked }) {
+  const [search, setSearch] = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) { setSearch(''); setResults([]); return; }
+  }, [open]);
+
+  const handleSearch = async (q) => {
+    setSearch(q);
+    if (q.length < 2) { setResults([]); return; }
+    setLoading(true);
+    try {
+      const { default: cs } = await import('../services/clientService');
+      const res = await cs.getAll({ search: q, limit: 10 });
+      setResults(res.data || []);
+    } catch (_) { setResults([]); }
+    finally { setLoading(false); }
+  };
+
+  const handleLink = async (clientId) => {
+    try {
+      const { default: ms } = await import('../services/messageService');
+      await ms.linkClient(phone, clientId);
+      onLinked?.();
+      onClose();
+    } catch (_) {}
+  };
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl border border-[#E5E5E5] p-5 max-w-md w-full mx-4 max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4 shrink-0">
+          <h4 className="font-bold text-primary text-lg">Vincular con cliente</h4>
+          <button onClick={onClose} className="material-symbols-outlined text-on-surface-variant hover:text-primary cursor-pointer">close</button>
+        </div>
+        <input value={search} onChange={e => handleSearch(e.target.value)}
+          placeholder="Buscar cliente por nombre o teléfono…"
+          autoFocus
+          className="w-full h-10 px-3 rounded-xl border border-[#E5E5E5] bg-[#f5f5f5] text-sm focus:outline-none focus:ring-2 focus:ring-[#fed65b] focus:bg-white mb-3 shrink-0" />
+        <div className="flex-1 overflow-y-auto min-h-0 space-y-1">
+          {loading && <p className="text-sm text-on-surface-variant text-center py-4">Buscando…</p>}
+          {!loading && search.length >= 2 && results.length === 0 && (
+            <p className="text-sm text-on-surface-variant text-center py-4">Sin resultados</p>
+          )}
+          {results.map(c => (
+            <button key={c.id} onClick={() => handleLink(c.id)}
+              className="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-[#f5f5f5] transition-colors cursor-pointer">
+              <div className="w-8 h-8 rounded-full bg-[#fed65b]/30 text-[#735c00] flex items-center justify-center font-bold text-xs shrink-0">
+                {((c.first_name?.[0] || '') + (c.last_name?.[0] || '')).toUpperCase() || '?'}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-primary truncate">{c.first_name} {c.last_name}</p>
+                {c.phone && <p className="text-[11px] text-on-surface-variant">{c.phone}</p>}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Confirmación de borrado ────────────────────────────────────────────────
 function DeleteConfirm({ confirmDelete, conversations, onDelete, onCancel }) {
   if (!confirmDelete) return null;
@@ -334,12 +378,10 @@ export default function MessagesPage() {
   const [search, setSearch] = useState('');
   const [sendText, setSendText] = useState('');
   const [sending, setSending] = useState(false);
-  const [linkClientOpen, setLinkClientOpen] = useState(false);
-  const [linkClientSearch, setLinkClientSearch] = useState('');
-  const [clientResults, setClientResults] = useState([]);
   const [resolving, setResolving] = useState(null); // phone being resolved
   const [resolveInput, setResolveInput] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [linkModalOpen, setLinkModalOpen] = useState(false);
 
   const messagesEnd = useRef(null);
   const fileRef = useRef(null);
@@ -384,7 +426,7 @@ export default function MessagesPage() {
     setMessages([]);
     setResolving(null);
     setResolveInput('');
-    setLinkClientOpen(false);
+    setLinkModalOpen(false);
     try { messageService.markAsRead(conv.phone); } catch (_) {}
     loadMsgs(conv.phone);
   }, [loadMsgs]);
@@ -414,27 +456,6 @@ export default function MessagesPage() {
       await loadConvs(false);
     } catch (e) { console.error(e); } finally { setSending(false); }
   };
-
-  // ─── Buscar clientes para vincular ───────────────────────────────────────
-  const searchClients = useCallback(async (q) => {
-    setLinkClientSearch(q);
-    if (q.length < 2) { setClientResults([]); return; }
-    try {
-      const { default: cs } = await import('../services/clientService');
-      const res = await cs.getClients({ search: q, limit: 10 });
-      setClientResults(res.data || []);
-    } catch (_) { setClientResults([]); }
-  }, []);
-
-  const handleLink = useCallback(async (clientId) => {
-    try {
-      await messageService.linkClient(selectedPhone, clientId);
-      setLinkClientOpen(false);
-      setLinkClientSearch('');
-      setClientResults([]);
-      await loadConvs(false);
-    } catch (e) { console.error(e); }
-  }, [selectedPhone, loadConvs]);
 
   // ─── Resolver LID ───────────────────────────────────────────────────────
   const handleResolve = useCallback(async () => {
@@ -469,6 +490,12 @@ export default function MessagesPage() {
     } catch (e) { console.error(e); }
   }, [selectedPhone, loadConvs]);
 
+  // ─── Vincular cliente existente ─────────────────────────────────────────
+  const handleLinked = useCallback(async () => {
+    await loadConvs(true);
+    if (selectedPhone) await loadMsgs(selectedPhone);
+  }, [selectedPhone, loadConvs, loadMsgs]);
+
   // ─── Loading / Error ────────────────────────────────────────────────────
   if (loading && conversations.length === 0) {
     return (
@@ -481,6 +508,12 @@ export default function MessagesPage() {
 
   return (
     <>
+      <LinkClientModal
+        open={linkModalOpen}
+        phone={selectedPhone}
+        onClose={() => setLinkModalOpen(false)}
+        onLinked={handleLinked}
+      />
       <DeleteConfirm
         confirmDelete={confirmDelete}
         conversations={conversations}
@@ -505,17 +538,12 @@ export default function MessagesPage() {
           setResolveInput={setResolveInput}
           handleResolve={handleResolve}
           handleCreateClient={handleCreateClient}
+          onOpenLinkModal={() => setLinkModalOpen(true)}
           handleSend={handleSend}
           sendText={sendText}
           setSendText={setSendText}
           sending={sending}
           setSending={setSending}
-          linkClientOpen={linkClientOpen}
-          setLinkClientOpen={setLinkClientOpen}
-          linkClientSearch={linkClientSearch}
-          linkClientSearchFn={searchClients}
-          clientResults={clientResults}
-          handleLink={handleLink}
           confirmDelete={confirmDelete}
           setConfirmDelete={setConfirmDelete}
           fileRef={fileRef}
