@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Button from '../components/Button';
+import CreateClientModal from '../components/CreateClientModal';
 import messageService from '../services/messageService';
 import settingsService from '../services/settingsService';
 import { loadConversationsCache, saveConversationsCache, loadMessagesCache, saveMessagesCache, isCacheStale } from '../utils/cache';
@@ -136,7 +137,7 @@ function ConvSidebar({ search, setSearch, conversations, selectedPhone, onSelect
 function MsgPanel({
   selectedPhone, conversations,
   resolving, setResolving, resolveInput, setResolveInput,
-  handleResolve, handleCreateClient, onOpenLinkModal, handleSend,
+  handleResolve, onOpenCreateModal, onOpenLinkModal, handleSend,
   sendText, setSendText, sending, setSending,
   confirmDelete, setConfirmDelete,
   fileRef, resolveRef, messagesEnd,
@@ -202,7 +203,7 @@ function MsgPanel({
             <span className="material-symbols-outlined text-[15px]">delete</span>
           </button>
           {!conv?.client_name && (
-            <button onClick={handleCreateClient}
+            <button onClick={onOpenCreateModal}
               className="px-2 py-1.5 text-xs text-on-surface-variant hover:text-[#735c00] hover:bg-[#fed65b]/20 rounded-lg transition-colors flex items-center gap-1">
               <span className="material-symbols-outlined text-[15px]">person_add</span>
             </button>
@@ -383,6 +384,7 @@ export default function MessagesPage() {
   const [resolveInput, setResolveInput] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [linkModalOpen, setLinkModalOpen] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [showGroupMessages, setShowGroupMessages] = useState(true);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
@@ -491,14 +493,10 @@ export default function MessagesPage() {
     } catch (e) { console.error(e); }
   }, [confirmDelete, selectedPhone, loadConvs]);
 
-  // ─── Crear cliente desde número ─────────────────────────────────────────
-  const handleCreateClient = useCallback(async () => {
-    if (!selectedPhone) return;
-    try {
-      await messageService.createClient({ phone: selectedPhone });
-      await loadConvs(true);
-    } catch (e) { console.error(e); }
-  }, [selectedPhone, loadConvs]);
+  const handleClientCreated = useCallback(async () => {
+    await loadConvs(true);
+    if (selectedPhone) await loadMsgs(selectedPhone);
+  }, [selectedPhone, loadConvs, loadMsgs]);
 
   // ─── Vincular cliente existente ─────────────────────────────────────────
   const handleLinked = useCallback(async () => {
@@ -518,6 +516,12 @@ export default function MessagesPage() {
 
   return (
     <>
+      <CreateClientModal
+        open={showCreateModal}
+        phone={selectedPhone}
+        onClose={() => setShowCreateModal(false)}
+        onSaved={handleClientCreated}
+      />
       <LinkClientModal
         open={linkModalOpen}
         phone={selectedPhone}
@@ -547,7 +551,7 @@ export default function MessagesPage() {
           resolveInput={resolveInput}
           setResolveInput={setResolveInput}
           handleResolve={handleResolve}
-          handleCreateClient={handleCreateClient}
+          onOpenCreateModal={() => setShowCreateModal(true)}
           onOpenLinkModal={() => setLinkModalOpen(true)}
           handleSend={handleSend}
           sendText={sendText}
