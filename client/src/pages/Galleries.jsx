@@ -7,16 +7,16 @@ import clientService from '../services/clientService';
 // ─── Helpers de UI ────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG = {
-  active: { label: 'Activa', bg: 'bg-green-50', text: 'text-green-700', dot: 'bg-green-500' },
-  draft: { label: 'Borrador', bg: 'bg-yellow-50', text: 'text-yellow-700', dot: 'bg-yellow-400' },
-  archived: { label: 'Archivada', bg: 'bg-gray-100', text: 'text-gray-600', dot: 'bg-gray-400' },
+  borrador: { label: 'Borrador', bg: 'bg-yellow-50', text: 'text-yellow-700', dot: 'bg-yellow-400' },
+  editando: { label: 'Editando', bg: 'bg-blue-50', text: 'text-blue-700', dot: 'bg-blue-500' },
+  completado: { label: 'Completado', bg: 'bg-green-50', text: 'text-green-700', dot: 'bg-green-500' },
 };
 
 const STATUS_TABS = [
   { value: 'all', label: 'Todas' },
-  { value: 'active', label: 'Activas' },
-  { value: 'draft', label: 'Borradores' },
-  { value: 'archived', label: 'Archivadas' },
+  { value: 'borrador', label: 'Borrador' },
+  { value: 'editando', label: 'Editando' },
+  { value: 'completado', label: 'Completado' },
 ];
 
 function formatDate(iso) {
@@ -110,14 +110,16 @@ export default function Galleries() {
     const title = fd.get('title')?.trim();
     const client_id = fd.get('client_id');
     const status = fd.get('status');
+    const external_url = fd.get('external_url')?.trim() || '';
 
-    if (!title || !client_id) return;
+    if (!title) return;
+    if (galleryModal.mode === 'add' && !client_id) return;
 
     try {
       if (galleryModal.mode === 'add') {
-        await galleryService.create({ client_id, title, status });
+        await galleryService.create({ client_id, title, status, external_url });
       } else {
-        await galleryService.update(galleryModal.data.id, { title, status });
+        await galleryService.update(galleryModal.data.id, { title, status, external_url });
       }
       setGalleryModal({ open: false, mode: 'add', data: null });
       await loadGalleries();
@@ -385,6 +387,20 @@ export default function Galleries() {
                 />
               </div>
 
+              {/* Link externo */}
+              <div>
+                <label className="text-label-md text-primary font-semibold block mb-1">
+                  Link externo
+                </label>
+                <input
+                  name="external_url"
+                  placeholder="Ej: https://migalería.com/album/abc123"
+                  defaultValue={galleryModal.data?.external_url || ''}
+                  className="w-full h-10 px-ds-md rounded-xl border border-[#E5E5E5] font-body-md text-body-md"
+                />
+                <p className="text-xs text-on-surface-variant mt-1">Link a la app externa donde están las fotos</p>
+              </div>
+
               {/* Cliente (solo dropdown en creación) */}
               {galleryModal.mode === 'add' ? (
                 <div>
@@ -427,9 +443,9 @@ export default function Galleries() {
                   defaultValue={galleryModal.data?.status || 'draft'}
                   className="w-full h-10 px-ds-md rounded-xl border border-[#E5E5E5] font-body-md text-body-md bg-white"
                 >
-                  <option value="draft">Borrador</option>
-                  <option value="active">Activa</option>
-                  <option value="archived">Archivada</option>
+                  <option value="borrador">Borrador</option>
+                  <option value="editando">Editando</option>
+                  <option value="completado">Completado</option>
                 </select>
               </div>
 

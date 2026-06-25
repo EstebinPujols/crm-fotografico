@@ -171,7 +171,7 @@ router.post('/', requireRole('fotografo'), galleryRules, async (req, res, next) 
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { client_id, project_id, title, status } = req.body;
+    const { client_id, project_id, title, status, external_url } = req.body;
 
     const { data: galleries, error } = await db
       .from('galleries')
@@ -179,7 +179,8 @@ router.post('/', requireRole('fotografo'), galleryRules, async (req, res, next) 
         client_id,
         project_id: project_id || null,
         title,
-        status: status || 'draft',
+        external_url: external_url || null,
+        status: status || 'borrador',
         share_token: crypto.randomUUID(),
       })
       .select();
@@ -207,7 +208,7 @@ router.put('/:id', requireRole('fotografo'), async (req, res, next) => {
       return res.status(404).json({ error: 'Galería no encontrada' });
     }
 
-    const allowedFields = ['title', 'status'];
+    const allowedFields = ['title', 'status', 'external_url'];
     const updates = {};
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) {
