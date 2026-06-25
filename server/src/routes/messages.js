@@ -36,7 +36,7 @@ const upload = multer({
 
 router.get('/', async (req, res, next) => {
   try {
-    const { search, page = 1, limit = 50 } = req.query;
+    const { search, page = 1, limit = 50, hide_groups } = req.query;
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
     const from = (pageNum - 1) * limitNum;
@@ -45,6 +45,10 @@ router.get('/', async (req, res, next) => {
       .from('whatsapp_messages')
       .select('*, clients(id, first_name, last_name, phone)')
       .order('created_at', { ascending: false });
+
+    if (hide_groups === 'true') {
+      query = query.neq('is_group', true);
+    }
 
     const { data: messages, error } = await query;
     if (error) throw error;

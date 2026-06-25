@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Button from '../components/Button';
 import messageService from '../services/messageService';
+import settingsService from '../services/settingsService';
 import { loadConversationsCache, saveConversationsCache, loadMessagesCache, saveMessagesCache, isCacheStale } from '../utils/cache';
 
 // ─── Formateo de teléfonos ───────────────────────────────────────────────────
@@ -382,6 +383,8 @@ export default function MessagesPage() {
   const [resolveInput, setResolveInput] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [linkModalOpen, setLinkModalOpen] = useState(false);
+  const [showGroupMessages, setShowGroupMessages] = useState(true);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   const messagesEnd = useRef(null);
   const fileRef = useRef(null);
@@ -394,7 +397,7 @@ export default function MessagesPage() {
       const cached = loadConversationsCache();
       if (cached && !isCacheStale() && showLoad) setConversations(cached);
 
-      const res = await messageService.getConversations({ limit: 100 });
+      const res = await messageService.getConversations({ limit: 100, hideGroups: !showGroupMessages });
       const convs = res.data || [];
       setConversations(convs);
       saveConversationsCache(convs);
@@ -403,9 +406,16 @@ export default function MessagesPage() {
     } finally {
       if (showLoad) setLoading(false);
     }
-  }, []);
+  }, [showGroupMessages]);
 
   useEffect(() => { loadConvs(true); }, [loadConvs]);
+
+  // ─── Cargar setting de grupos ───────────────────────────────────────
+  useEffect(() => {
+    settingsService.get().then(s => {
+      setShowGroupMessages(s.showGroupMessages !== false);
+    }).catch(() => {}).finally(() => setSettingsLoaded(true));
+  }, [showGroupMessages]);
 
   // ─── Cargar mensajes ────────────────────────────────────────────────────
   const loadMsgs = useCallback(async (phone) => {
@@ -418,7 +428,7 @@ export default function MessagesPage() {
       setMessages(msgs);
       saveMessagesCache(phone, msgs);
     } catch (e) { console.error(e); }
-  }, []);
+  }, [showGroupMessages]);
 
   // ─── Seleccionar conversación ────────────────────────────────────────────
   const handleSelect = useCallback((conv) => {

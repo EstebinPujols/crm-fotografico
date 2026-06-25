@@ -135,6 +135,17 @@ export default function Settings() {
     }
   };
 
+  const handleToggleGroupMessages = async () => {
+    const next = settings.showGroupMessages === false ? true : false;
+    setSettings(prev => ({ ...prev, showGroupMessages: next }));
+    setHasChanges(true);
+    try {
+      await settingsService.update({ showGroupMessages: next });
+    } catch (e) {
+      console.warn('No se pudo guardar showGroupMessages:', e.message);
+    }
+  };
+
   // ─── Handlers de Templates ─────────────────────────────────────────
   const handleOpenTemplateModal = (mode, data = null) => {
     setTemplateModal({
@@ -385,6 +396,20 @@ export default function Settings() {
                   </button>
                 </div>
               )}
+
+              {/* ─── Mostrar mensajes de grupos ──────────── */}
+              <div className="border-t border-[#E5E5E5] pt-ds-lg flex justify-between items-center">
+                <div>
+                  <p className="text-label-md text-primary font-semibold">Mensajes de grupos</p>
+                  <p className="text-body-md text-on-surface-variant">Mostrar mensajes de grupos de WhatsApp en el CRM</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" className="sr-only peer"
+                    checked={settings.showGroupMessages !== false}
+                    onChange={handleToggleGroupMessages} />
+                  <div className="w-11 h-6 bg-[#e2e2e2] peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#fed65b] rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#735c00]" />
+                </label>
+              </div>
             </>
           )}
         </Card>

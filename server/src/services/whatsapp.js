@@ -485,6 +485,8 @@ async function start() {
         state.processedIds = new Set(arr);
       }
 
+      // ★ Detectar grupo
+      const isGroup = msg.key.remoteJid.endsWith('@g.us');
       const jid = msg.key.remoteJid || '';
       let phone = resolvePhone(jid);
 
@@ -543,6 +545,7 @@ async function start() {
             client_id: client?.id || null,
             phone: storedPhone,
             direction: msg.key.fromMe ? 'saliente' : 'entrante',
+            is_group: isGroup,
             message: displayText,
           })
           .select();

@@ -11,6 +11,7 @@ const messageService = {
     if (filters.search) params.search = filters.search;
     if (filters.page) params.page = filters.page;
     if (filters.limit) params.limit = filters.limit;
+    if (filters.hideGroups) params.hide_groups = 'true';
     const response = await api.get('/messages', { params });
     return response.data;
   },
