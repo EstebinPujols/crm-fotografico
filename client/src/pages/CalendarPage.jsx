@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Button from '../components/Button';
 import appointmentService from '../services/appointmentService';
 import clientService from '../services/clientService';
@@ -273,6 +273,8 @@ export default function CalendarPage() {
   const [modal, setModal] = useState({ open: false, mode: 'create', data: null, defaultDate: null, defaultTime: null });
   const [suggestions, setSuggestions] = useState(null); // [{ date, time, day }] cuando se busca espacio
   const [pendingFormData, setPendingFormData] = useState(null); // datos parciales de un intento fallido
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const monthPickerRef = useRef(null);
 
   const days = buildDays(year, month);
   const isToday = (d, cur) => cur && d === today.getDate() && month === today.getMonth() && year === today.getFullYear();
@@ -353,6 +355,20 @@ export default function CalendarPage() {
     else setMonth(m);
     setSelected(null);
   };
+
+  const goToMonth = (m) => { setMonth(m); setSelected(null); setShowMonthPicker(false); };
+  const goToYear = (delta) => setYear((y) => y + delta);
+
+  useEffect(() => {
+    if (!showMonthPicker) return;
+    const handler = (e) => {
+      if (monthPickerRef.current && !monthPickerRef.current.contains(e.target)) {
+        setShowMonthPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showMonthPicker]);
 
   // ─── Modal helpers ────────────────────────────────────────────────────────
 
@@ -461,7 +477,38 @@ export default function CalendarPage() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-[#E5E5E5] shrink-0">
             <div className="flex items-center gap-2">
               <button onClick={() => nav(-1)} className="material-symbols-outlined text-on-surface-variant hover:text-primary cursor-pointer p-1">chevron_left</button>
-              <h3 className="text-headline-md font-semibold text-primary min-w-[180px] text-center">{MONTHS[month]} {year}</h3>
+              <div className="relative" ref={monthPickerRef}>
+                <button
+                  onClick={() => setShowMonthPicker(!showMonthPicker)}
+                  className="text-headline-md font-semibold text-primary min-w-[180px] text-center hover:bg-[#f5f5f5] px-3 py-1 rounded-lg transition-colors cursor-pointer"
+                >
+                  {MONTHS[month]} {year}
+                </button>
+                {showMonthPicker && (
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-white rounded-xl border border-[#E5E5E5] shadow-lg p-3 z-20 min-w-[220px]">
+                    <div className="flex items-center justify-between mb-2">
+                      <button onClick={() => goToYear(-1)} className="material-symbols-outlined text-on-surface-variant hover:text-primary cursor-pointer p-1 text-[18px]">chevron_left</button>
+                      <span className="text-sm font-semibold text-primary">{year}</span>
+                      <button onClick={() => goToYear(1)} className="material-symbols-outlined text-on-surface-variant hover:text-primary cursor-pointer p-1 text-[18px]">chevron_right</button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1">
+                      {MONTHS.map((name, i) => (
+                        <button
+                          key={i}
+                          onClick={() => goToMonth(i)}
+                          className={`text-xs py-2 rounded-lg transition-colors cursor-pointer font-medium ${
+                            i === month
+                              ? 'bg-[#735c00] text-white'
+                              : 'text-primary hover:bg-[#f5f5f5]'
+                          }`}
+                        >
+                          {name.slice(0, 3)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
               <button onClick={() => nav(1)} className="material-symbols-outlined text-on-surface-variant hover:text-primary cursor-pointer p-1">chevron_right</button>
             </div>
             <button
