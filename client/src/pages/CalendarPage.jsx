@@ -24,6 +24,7 @@ const STATUS_CONFIG = {
   en_proceso: { label: 'En proceso', bg: 'bg-blue-50', text: 'text-blue-700' },
   completada: { label: 'Completada', bg: 'bg-gray-100', text: 'text-gray-600' },
   cancelada: { label: 'Cancelada', bg: 'bg-red-50', text: 'text-red-600' },
+  perdida: { label: 'Perdida', bg: 'bg-orange-50', text: 'text-orange-700' },
 };
 
 function getTypeColor(sessionType) {

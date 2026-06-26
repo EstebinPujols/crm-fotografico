@@ -12,6 +12,7 @@ const messageService = {
     if (filters.page) params.page = filters.page;
     if (filters.limit) params.limit = filters.limit;
     if (filters.hideGroups) params.hide_groups = 'true';
+    if (filters.includeHidden) params.include_hidden = 'true';
     const response = await api.get('/messages', { params });
     return response.data;
   },
@@ -70,6 +71,24 @@ const messageService = {
   /** Crear cliente desde número de teléfono */
   async createClient(data) {
     const response = await api.post('/messages/create-client', data);
+    return response.data;
+  },
+
+  /** Ocultar conversación (blacklist) */
+  async hideConversation(phone) {
+    const response = await api.post('/messages/hide', { phone });
+    return response.data;
+  },
+
+  /** Mostrar conversación de nuevo */
+  async unhideConversation(phone) {
+    const response = await api.delete(`/messages/hide/${encodeURIComponent(phone)}`);
+    return response.data;
+  },
+
+  /** Listar teléfonos ocultos */
+  async getHiddenPhones() {
+    const response = await api.get('/messages/hidden');
     return response.data;
   },
 

@@ -101,6 +101,9 @@ exports.seed = async function (knex) {
   const lastWeek = new Date(today);
   lastWeek.setDate(lastWeek.getDate() - 5);
 
+  const twoWeeksAgo = new Date(today);
+  twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+
   const appointments = await knex('appointments').insert([
     {
       client_id: clients[0].id,
@@ -135,6 +138,15 @@ exports.seed = async function (knex) {
       location: 'Oficinas DK Studios',
       session_type: 'Corporativo',
       status: 'pendiente',
+    },
+    {
+      client_id: clients[4].id,
+      date: fmt(twoWeeksAgo),
+      time: '09:00:00',
+      location: 'Estudio Principal',
+      session_type: 'Producto',
+      status: 'pendiente',
+      notes: 'Cita pasada — se marcará como perdida automáticamente al consultar.',
     },
   ]).returning('*');
 

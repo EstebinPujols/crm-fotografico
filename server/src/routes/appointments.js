@@ -12,6 +12,64 @@ router.use(authenticate);
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
+ * Auto-marca como "perdida" las citas pasadas que no fueron completadas ni canceladas.
+ * Se ejecuta en cada GET para mantener los datos actualizados sin necesidad de un cron.
+ */
+async function autoMarkPastDue() {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const nowTotalMin = now.getHours() * 60 + now.getMinutes();
+
+    const statusesToCheck = ['pendiente', 'confirmada', 'en_proceso'];
+
+    const { data: pastDue, error } = await db
+      .from('appointments')
+      .select('id, date, time')
+      .lt('date', today)
+      .in('status', statusesToCheck);
+
+    if (error) throw error;
+
+    if (pastDue?.length) {
+      const ids = pastDue.map((a) => a.id);
+      await db
+        .from('appointments')
+        .update({ status: 'perdida', updated_at: new Date().toISOString() })
+        .in('id', ids);
+    }
+
+    // Citas de hoy cuya hora ya pasó
+    const { data: todayPast, error: err2 } = await db
+      .from('appointments')
+      .select('id, date, time')
+      .eq('date', today)
+      .in('status', statusesToCheck);
+
+    if (err2) throw err2;
+
+    if (todayPast?.length) {
+      const overdueIds = todayPast
+        .filter((a) => {
+          if (!a.time) return false;
+          const [h, m] = a.time.split(':').map(Number);
+          return h * 60 + m <= nowTotalMin;
+        })
+        .map((a) => a.id);
+
+      if (overdueIds.length) {
+        await db
+          .from('appointments')
+          .update({ status: 'perdida', updated_at: new Date().toISOString() })
+          .in('id', overdueIds);
+      }
+    }
+  } catch (e) {
+    console.error('Error auto-marcando citas como perdidas:', e.message);
+  }
+}
+
+/**
  * Lee el intervalo mínimo entre citas desde la tabla de configuraciones.
  * @returns {Promise<number>} Minutos — default 30
  */
@@ -44,7 +102,7 @@ async function checkTimeframeConflict(date, time, excludeId = null) {
     .from('appointments')
     .select('id, time')
     .eq('date', date)
-    .neq('status', 'cancelada');
+      .not('status', 'in', '("cancelada","perdida")');
 
   const { data: existing } = await query;
   if (!existing || existing.length === 0) return { conflict: false };
@@ -117,6 +175,7 @@ function checkIsInPast(date, time) {
  */
 router.get('/', async (req, res, next) => {
   try {
+    await autoMarkPastDue();
     const { date_from, date_to, status, client_id, page = 1, limit = 50 } = req.query;
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
@@ -198,7 +257,7 @@ router.get('/next-available', async (req, res, next) => {
         .from('appointments')
         .select('time')
         .eq('date', dateStr)
-        .neq('status', 'cancelada')
+        .not('status', 'in', '("cancelada","perdida")')
         .order('time', { ascending: true });
 
       // Construir set de minutos ocupados (con margen de stepMinutes)
@@ -237,13 +296,14 @@ router.get('/next-available', async (req, res, next) => {
  */
 router.get('/upcoming', async (req, res, next) => {
   try {
+    await autoMarkPastDue();
     const today = new Date().toISOString().split('T')[0];
 
     const { data: appointments, error } = await db
       .from('appointments')
       .select('*, clients(first_name, last_name, phone)')
       .gte('date', today)
-      .neq('status', 'cancelada')
+      .not('status', 'in', '("cancelada","perdida")')
       .order('date', { ascending: true })
       .order('time', { ascending: true })
       .limit(20);

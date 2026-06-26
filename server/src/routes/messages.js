@@ -36,10 +36,19 @@ const upload = multer({
 
 router.get('/', async (req, res, next) => {
   try {
-    const { search, page = 1, limit = 50, hide_groups } = req.query;
+    const { search, page = 1, limit = 50, hide_groups, include_hidden } = req.query;
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
     const from = (pageNum - 1) * limitNum;
+
+    // Obtener teléfonos ocultos (solo si no se piden explícitamente)
+    let hiddenPhones = new Set();
+    if (include_hidden !== 'true') {
+      const { data: hiddenRows } = await db
+        .from('hidden_conversations')
+        .select('phone');
+      hiddenPhones = new Set((hiddenRows || []).map(h => h.phone));
+    }
 
     let query = db
       .from('whatsapp_messages')
@@ -57,10 +66,11 @@ router.get('/', async (req, res, next) => {
     const mediaIds = (messages || []).map(m => m.id);
     const mediaMap = mediaIndex.getMany(mediaIds);
 
-    // Agrupar por teléfono
+    // Agrupar por teléfono (excluyendo ocultos)
     const convMap = new Map();
     for (const msg of messages || []) {
       const phone = msg.phone;
+      if (hiddenPhones.has(phone)) continue;
       if (!convMap.has(phone)) {
         convMap.set(phone, {
           phone,
@@ -444,6 +454,67 @@ router.delete('/conversation/:phone', requireRole('admin'), async (req, res, nex
 
     console.log(`[Messages] Conversación ${phone} eliminada (${toDelete.length} mensajes)`);
     res.json({ success: true, deleted: toDelete.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────
+ *  POST /api/messages/hide — Ocultar conversación (blacklist)
+ * ═════════════════════════════════════════════════════════════ */
+router.post('/hide', async (req, res, next) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ error: 'phone requerido' });
+
+    const { error } = await db
+      .from('hidden_conversations')
+      .insert({ phone });
+
+    if (error && error.code === '23505') {
+      // Ya existe — no es error
+      return res.json({ success: true, hidden: true });
+    }
+    if (error) throw error;
+
+    console.log(`[Messages] Conversación ${phone} ocultada`);
+    res.status(201).json({ success: true, hidden: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────
+ *  DELETE /api/messages/hide/:phone — Mostrar conversación de nuevo
+ * ═════════════════════════════════════════════════════════════ */
+router.delete('/hide/:phone', async (req, res, next) => {
+  try {
+    const phone = req.params.phone;
+    const { error } = await db
+      .from('hidden_conversations')
+      .delete()
+      .eq('phone', phone);
+
+    if (error) throw error;
+
+    console.log(`[Messages] Conversación ${phone} visible de nuevo`);
+    res.json({ success: true, hidden: false });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────
+ *  GET /api/messages/hidden — Listar teléfonos ocultos
+ * ═════════════════════════════════════════════════════════════ */
+router.get('/hidden', async (req, res, next) => {
+  try {
+    const { data: hidden, error } = await db
+      .from('hidden_conversations')
+      .select('phone');
+
+    if (error) throw error;
+    res.json((hidden || []).map(h => h.phone));
   } catch (err) {
     next(err);
   }

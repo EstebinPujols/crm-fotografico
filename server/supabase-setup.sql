@@ -64,7 +64,7 @@ CREATE TABLE public.appointments (
   location VARCHAR(255),
   session_type VARCHAR(100),
   status VARCHAR(20) NOT NULL DEFAULT 'pendiente'
-    CHECK (status IN ('pendiente', 'confirmada', 'en_proceso', 'completada', 'cancelada')),
+    CHECK (status IN ('pendiente', 'confirmada', 'en_proceso', 'completada', 'cancelada', 'perdida')),
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
@@ -218,7 +218,9 @@ INSERT INTO public.appointments (id, client_id, date, time, session_type, status
   ('c0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001',
    '2026-07-15', '10:00', 'Pre-boda', 'confirmada', 'Llegar 15 min antes'),
   ('c0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000003',
-   '2026-08-20', '14:00', 'Quinceañera', 'pendiente', 'Llevar vestido de repuesto')
+   '2026-08-20', '14:00', 'Quinceañera', 'pendiente', 'Llevar vestido de repuesto'),
+  ('c0000000-0000-0000-0000-000000000003', 'b0000000-0000-0000-0000-000000000002',
+   '2026-06-01', '11:00', 'Retrato', 'pendiente', 'Cita pasada — se marcará como perdida automáticamente')
 ON CONFLICT (id) DO NOTHING;
 
 -- 5. Proyectos

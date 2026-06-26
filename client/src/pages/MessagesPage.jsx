@@ -72,7 +72,8 @@ function MediaBlock({ media }) {
 }
 
 // ─── Sidebar: lista de conversaciones ────────────────────────────────────────
-function ConvSidebar({ search, setSearch, conversations, selectedPhone, onSelect, loading }) {
+function ConvSidebar({ search, setSearch, conversations, selectedPhone, onSelect, loading, onHideConv: onToggleHide, showHidden, setShowHidden, hiddenPhones }) {
+  const isHidden = (phone) => hiddenPhones.includes(phone);
   const filtered = search
     ? conversations.filter(c => (c.client_name && c.client_name.toLowerCase().includes(search.toLowerCase())) || c.phone.includes(search))
     : conversations;
@@ -101,34 +102,50 @@ function ConvSidebar({ search, setSearch, conversations, selectedPhone, onSelect
           const isLid = conv.phone?.replace(/[^0-9]/g, '').length >= 13 && !conv.client_name;
           const unread = conv.unread_count || 0;
           return (
-            <button key={conv.phone} onClick={() => onSelect(conv)}
-              className={`w-full text-left px-3 py-3 border-b border-[#E5E5E5] transition-colors ${sel ? 'bg-[#fed65b]/10 border-l-2 border-l-[#735c00]' : 'hover:bg-[#f5f5f5]'}`}>
-              <div className="flex items-start gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${isLid ? 'bg-amber-100 text-amber-700' : 'bg-[#fed65b]/30 text-[#735c00]'}`}>
-                  {isLid ? '⚠' : (conv.client_name ? conv.client_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?')}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className={`text-sm truncate ${unread > 0 ? 'font-semibold text-primary' : 'text-primary'}`}>{name}</span>
-                    <span className="text-[11px] text-on-surface-variant shrink-0">{formatTime(conv.last_at)}</span>
+            <div key={conv.phone} className="group relative">
+              <button onClick={() => onSelect(conv)}
+                className={`w-full text-left px-3 py-3 border-b border-[#E5E5E5] transition-colors ${sel ? 'bg-[#fed65b]/10 border-l-2 border-l-[#735c00]' : 'hover:bg-[#f5f5f5]'}`}>
+                <div className="flex items-start gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${isLid ? 'bg-amber-100 text-amber-700' : 'bg-[#fed65b]/30 text-[#735c00]'}`}>
+                    {isLid ? '⚠' : (conv.client_name ? conv.client_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?')}
                   </div>
-                  <p className="text-xs text-on-surface-variant truncate mt-0.5">
-                    {conv.last_message || (conv.has_media ? '[Medio]' : '')}
-                  </p>
-                  {unread > 0 && (
-                    <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[#735c00] text-white text-[10px] font-bold mt-1">
-                      {unread > 99 ? '99+' : unread}
-                    </span>
-                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`text-sm truncate ${unread > 0 ? 'font-semibold text-primary' : 'text-primary'}`}>{name}</span>
+                      <span className="text-[11px] text-on-surface-variant shrink-0">{formatTime(conv.last_at)}</span>
+                    </div>
+                    <p className="text-xs text-on-surface-variant truncate mt-0.5">
+                      {conv.last_message || (conv.has_media ? '[Medio]' : '')}
+                    </p>
+                    {unread > 0 && (
+                      <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[#735c00] text-white text-[10px] font-bold mt-1">
+                        {unread > 99 ? '99+' : unread}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </button>
+              </button>
+              <button onClick={() => onToggleHide(conv.phone)}
+                title={isHidden(conv.phone) ? 'Mostrar conversación' : 'Ocultar conversación'}
+                className={`absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-lg transition-all text-xs ${isHidden(conv.phone) ? 'opacity-100 text-[#735c00] hover:bg-[#fed65b]/30' : 'text-on-surface-variant hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100'}`}>
+                <span className="material-symbols-outlined text-[16px]">{isHidden(conv.phone) ? 'visibility' : 'visibility_off'}</span>
+              </button>
+            </div>
           );
         })}
         {filtered.length === 0 && !loading && (
           <div className="p-6 text-center text-on-surface-variant text-sm">{search ? 'Sin resultados' : 'No hay conversaciones'}</div>
         )}
       </div>
+      {hiddenPhones.length > 0 && (
+        <div className="border-t border-[#E5E5E5] p-2">
+          <button onClick={() => setShowHidden(!showHidden)}
+            className="w-full flex items-center justify-center gap-2 py-2 text-xs text-on-surface-variant hover:text-primary rounded-lg hover:bg-[#f5f5f5] transition-colors">
+            <span className="material-symbols-outlined text-[16px]">{showHidden ? 'visibility' : 'visibility_off'}</span>
+            {showHidden ? 'Ocultando' : 'Mostrar'} conversaciones ocultas ({hiddenPhones.length})
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -142,6 +159,7 @@ function MsgPanel({
   confirmDelete, setConfirmDelete,
   fileRef, resolveRef, messagesEnd,
   messages, loadMsgs, loadConvs,
+  onHideConv, hiddenPhones,
 }) {
   if (!selectedPhone) {
     return (
@@ -157,6 +175,7 @@ function MsgPanel({
   const isLid = selectedPhone.replace(/[^0-9]/g, '').length >= 13;
   const conv = conversations.find(c => c.phone === selectedPhone);
   const headerName = conv?.client_name || formatPhone(selectedPhone);
+  const convIsHidden = (hiddenPhones || []).includes(selectedPhone);
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-white">
@@ -198,6 +217,11 @@ function MsgPanel({
           </div>
         </div>
         <div className="flex items-center gap-1.5">
+          <button onClick={() => onHideConv(selectedPhone)}
+            title={convIsHidden ? 'Mostrar conversación' : 'Ocultar conversación'}
+            className={`px-2 py-1.5 text-xs rounded-lg transition-colors flex items-center gap-1 ${convIsHidden ? 'text-[#735c00] bg-[#fed65b]/20 hover:bg-[#fed65b]/30' : 'text-on-surface-variant hover:text-red-600 hover:bg-red-50'}`}>
+            <span className="material-symbols-outlined text-[15px]">{convIsHidden ? 'visibility' : 'visibility_off'}</span>
+          </button>
           <button onClick={() => setConfirmDelete(selectedPhone)}
             className="px-2 py-1.5 text-xs text-on-surface-variant hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-1">
             <span className="material-symbols-outlined text-[15px]">delete</span>
@@ -387,6 +411,8 @@ export default function MessagesPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showGroupMessages, setShowGroupMessages] = useState(true);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
+  const [hiddenPhones, setHiddenPhones] = useState([]);
 
   const messagesEnd = useRef(null);
   const fileRef = useRef(null);
@@ -399,7 +425,7 @@ export default function MessagesPage() {
       const cached = loadConversationsCache();
       if (cached && !isCacheStale() && showLoad) setConversations(cached);
 
-      const res = await messageService.getConversations({ limit: 100, hideGroups: !showGroupMessages });
+      const res = await messageService.getConversations({ limit: 100, hideGroups: !showGroupMessages, includeHidden: showHidden });
       const convs = res.data || [];
       setConversations(convs);
       saveConversationsCache(convs);
@@ -408,7 +434,17 @@ export default function MessagesPage() {
     } finally {
       if (showLoad) setLoading(false);
     }
-  }, [showGroupMessages]);
+  }, [showGroupMessages, showHidden]);
+
+  // ─── Cargar teléfonos ocultos ──────────────────────────────────────────
+  const loadHidden = useCallback(async () => {
+    try {
+      const phones = await messageService.getHiddenPhones();
+      setHiddenPhones(phones || []);
+    } catch (e) { console.error(e); }
+  }, []);
+
+  useEffect(() => { loadHidden(); }, [loadHidden]);
 
   useEffect(() => { loadConvs(true); }, [loadConvs]);
 
@@ -439,7 +475,11 @@ export default function MessagesPage() {
     setResolving(null);
     setResolveInput('');
     setLinkModalOpen(false);
-    try { messageService.markAsRead(conv.phone); } catch (_) {}
+    // Limpiar no leídos localmente de inmediato
+    setConversations(prev => prev.map(c =>
+      c.phone === conv.phone ? { ...c, unread_count: 0 } : c
+    ));
+    messageService.markAsRead(conv.phone).catch(() => {});
     loadMsgs(conv.phone);
   }, [loadMsgs]);
 
@@ -481,6 +521,21 @@ export default function MessagesPage() {
       if (selectedPhone) await loadMsgs(selectedPhone);
     } catch (e) { console.error(e); }
   }, [resolveInput, resolving, selectedPhone, loadConvs, loadMsgs]);
+
+  // ─── Ocultar/mostrar conversación ──────────────────────────────────────
+  const handleHideConv = useCallback(async (phone) => {
+    try {
+      const isHidden = hiddenPhones.includes(phone);
+      if (isHidden) {
+        await messageService.unhideConversation(phone);
+      } else {
+        await messageService.hideConversation(phone);
+      }
+      if (selectedPhone === phone) setSelectedPhone(null);
+      await loadHidden();
+      await loadConvs(false);
+    } catch (e) { console.error(e); }
+  }, [hiddenPhones, selectedPhone, loadHidden, loadConvs]);
 
   // ─── Eliminar conversación ──────────────────────────────────────────────
   const handleDeleteConv = useCallback(async () => {
@@ -542,6 +597,10 @@ export default function MessagesPage() {
           selectedPhone={selectedPhone}
           onSelect={handleSelect}
           loading={loading}
+          onHideConv={handleHideConv}
+          showHidden={showHidden}
+          setShowHidden={setShowHidden}
+          hiddenPhones={hiddenPhones}
         />
         <MsgPanel
           selectedPhone={selectedPhone}
@@ -566,6 +625,8 @@ export default function MessagesPage() {
           messages={messages}
           loadMsgs={loadMsgs}
           loadConvs={loadConvs}
+          onHideConv={handleHideConv}
+          hiddenPhones={hiddenPhones}
         />
       </div>
     </>
