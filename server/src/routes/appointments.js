@@ -233,24 +233,29 @@ router.get('/', async (req, res, next) => {
 
 /**
  * GET /api/appointments/next-available
- * Busca el siguiente espacio disponible a partir de una fecha base.
+ * Busca espacios disponibles a partir de una fecha base.
+ * Acepta ?limit=N (default 5) para controlar cuántos slots devolver.
  *
  * ⚠️ DEBE ir antes de /:id para que Express no atrape "next-available" como param.
  */
 router.get('/next-available', async (req, res, next) => {
   try {
     const baseDate = req.query.start_date || new Date().toISOString().split('T')[0];
+    const limit = Math.min(parseInt(req.query.limit) || 5, 20);
     const minFrame = await getMinTimeframe();
     const stepMinutes = Math.max(30, minFrame);
 
     const START_HOUR = 9;   // 09:00
     const END_HOUR = 18;    // 18:00
-    const MAX_DAYS = 30;
+    const MAX_DAYS = 60;
+    const DAYS_ES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
+    const slots = [];
     let cursor = new Date(baseDate + 'T00:00:00');
 
-    for (let day = 0; day < MAX_DAYS; day++) {
+    for (let day = 0; day < MAX_DAYS && slots.length < limit; day++) {
       const dateStr = cursor.toISOString().split('T')[0];
+      const dow = DAYS_ES[cursor.getDay()];
 
       // Obtener citas existentes este día (no canceladas)
       const { data: dayAppts } = await db
@@ -272,10 +277,10 @@ router.get('/next-available', async (req, res, next) => {
         }
       }
 
-      // Buscar primer hueco libre en horario laboral
-      for (let mins = START_HOUR * 60; mins < END_HOUR * 60; mins += stepMinutes) {
+      // Buscar huecos libres en horario laboral
+      for (let mins = START_HOUR * 60; mins < END_HOUR * 60 && slots.length < limit; mins += stepMinutes) {
         if (!busy.has(mins)) {
-          return res.json({ date: dateStr, time: minutesToTime(mins) });
+          slots.push({ date: dateStr, time: minutesToTime(mins), day: dow });
         }
       }
 
@@ -283,8 +288,11 @@ router.get('/next-available', async (req, res, next) => {
       cursor.setDate(cursor.getDate() + 1);
     }
 
-    // No se encontró espacio en 30 días
-    res.status(404).json({ error: 'No se encontró espacio disponible en los próximos 30 días' });
+    if (slots.length === 0) {
+      return res.status(404).json({ error: 'No se encontró espacio disponible en los próximos 60 días' });
+    }
+
+    res.json({ slots });
   } catch (err) {
     next(err);
   }

@@ -271,7 +271,7 @@ export default function CalendarPage() {
   const [selected, setSelected] = useState(null);
   const [searchingSlot, setSearchingSlot] = useState(false);
   const [modal, setModal] = useState({ open: false, mode: 'create', data: null, defaultDate: null, defaultTime: null });
-  const [suggestion, setSuggestion] = useState(null); // { date, time } cuando se busca espacio
+  const [suggestions, setSuggestions] = useState(null); // [{ date, time, day }] cuando se busca espacio
   const [pendingFormData, setPendingFormData] = useState(null); // datos parciales de un intento fallido
 
   const days = buildDays(year, month);
@@ -363,13 +363,12 @@ export default function CalendarPage() {
     setModal({ open: true, mode: 'create', data: null, defaultDate: dateStr, defaultTime: null });
   };
 
-  // Buscar el siguiente espacio disponible
+  // Buscar espacios disponibles
   const handleSearchSlot = async () => {
     setSearchingSlot(true);
     try {
-      const slot = await appointmentService.getNextAvailable();
-      // Mostrar sugerencia en vez de abrir el modal directamente
-      setSuggestion(slot);
+      const res = await appointmentService.getNextAvailable();
+      setSuggestions(res.slots || []);
     } catch (err) {
       alert(err.response?.data?.error || 'No se encontró espacio disponible');
     } finally {
@@ -377,12 +376,9 @@ export default function CalendarPage() {
     }
   };
 
-  // Usar la sugerencia: abre el modal con la fecha/hora sugerida
-  const acceptSuggestion = () => {
-    if (!suggestion) return;
-    // Si hay datos pendientes (de un intento fallido), pasarlos como data
-    // para que el modal preserve cliente, tipo, notas, etc.
-    // Pero quitamos date/time del objeto para que la sugerencia tenga prioridad
+  // Usar una sugerencia: abre el modal con la fecha/hora seleccionada
+  const acceptSuggestion = (slot) => {
+    if (!slot) return;
     const preserved = pendingFormData ? { ...pendingFormData } : null;
     if (preserved) {
       delete preserved.date;
@@ -392,21 +388,20 @@ export default function CalendarPage() {
       open: true,
       mode: 'create',
       data: preserved,
-      defaultDate: suggestion.date,
-      defaultTime: suggestion.time,
+      defaultDate: slot.date,
+      defaultTime: slot.time,
     });
-    setSuggestion(null);
+    setSuggestions(null);
     setPendingFormData(null);
   };
 
-  // Cuando el modal detecta fecha pasada, guarda los datos y muestra sugerencia
+  // Cuando el modal detecta fecha pasada, guarda los datos y muestra sugerencias
   const handlePastDateSuggestion = async (formData) => {
-    setPendingFormData(formData); // preservar datos que ya llenó el usuario
-    // Cerramos el modal sin borrar pendingFormData (onClose sí lo borraría)
+    setPendingFormData(formData);
     setModal({ open: false, mode: 'create', data: null, defaultDate: null, defaultTime: null });
     try {
-      const slot = await appointmentService.getNextAvailable(formData.date || undefined);
-      setSuggestion(slot);
+      const res = await appointmentService.getNextAvailable(formData.date || undefined);
+      setSuggestions(res.slots || []);
     } catch (err) {
       alert('No se encontró espacio disponible');
     }
@@ -643,53 +638,62 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* Modal */}
-      {/* Diálogo de sugerencia de espacio disponible */}
-      {suggestion && (
+      {/* Selector de espacios disponibles */}
+      {suggestions && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl border border-[#E5E5E5] p-6 max-w-md w-full shadow-lg animate-in zoom-in-95 duration-150">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
-                <span className="material-symbols-outlined text-amber-600">info</span>
-              </div>
-              <div>
-                <h4 className="font-semibold text-primary text-lg">Espacio disponible</h4>
-                <p className="text-body-md text-on-surface-variant">
-                  El próximo espacio libre disponible es:
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-5">
-              <div className="flex items-center justify-center gap-6">
-                <div className="text-center">
-                  <span className="material-symbols-outlined text-amber-600 block text-2xl mb-1">calendar_today</span>
-                  <span className="font-semibold text-primary text-lg">{suggestion.date}</span>
+          <div className="bg-white rounded-xl border border-[#E5E5E5] p-6 max-w-lg w-full shadow-lg animate-in zoom-in-95 duration-150 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-amber-600">event</span>
                 </div>
-                <div className="text-2xl text-on-surface-variant">→</div>
-                <div className="text-center">
-                  <span className="material-symbols-outlined text-amber-600 block text-2xl mb-1">schedule</span>
-                  <span className="font-semibold text-primary text-lg">{suggestion.time}</span>
+                <div>
+                  <h4 className="font-semibold text-primary text-lg">Espacios disponibles</h4>
+                  <p className="text-body-md text-on-surface-variant text-xs">
+                    {pendingFormData ? 'La fecha elegida ya pasó. ' : ''}Selecciona un horario:
+                  </p>
                 </div>
               </div>
-            </div>
-
-            <p className="text-body-md text-on-surface-variant mb-5 text-center">
-              ¿Quieres agendar la cita en este horario?
-            </p>
-
-            <div className="flex gap-3">
               <button
-                onClick={() => { setSuggestion(null); setPendingFormData(null); }}
-                className="flex-1 h-11 rounded-xl border border-[#E5E5E5] text-sm font-medium text-on-surface-variant hover:bg-gray-50 transition-colors cursor-pointer"
+                onClick={() => { setSuggestions(null); setPendingFormData(null); }}
+                className="material-symbols-outlined text-on-surface-variant hover:text-primary cursor-pointer"
+              >close</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto min-h-0 space-y-2">
+              {suggestions.map((slot, i) => {
+                const dateObj = new Date(slot.date + 'T00:00:00');
+                const formattedDate = dateObj.toLocaleDateString('es', { day: 'numeric', month: 'long' });
+                return (
+                  <button
+                    key={i}
+                    onClick={() => acceptSuggestion(slot)}
+                    className="w-full flex items-center gap-4 p-3 rounded-xl border border-[#E5E5E5] hover:border-[#D4AF37] hover:bg-[#fed65b]/5 transition-all cursor-pointer text-left group"
+                  >
+                    <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-[#fed65b]/20 text-[#735c00] shrink-0">
+                      <span className="text-lg font-bold text-center leading-tight">
+                        {slot.time?.slice(0, 5)}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-primary">{slot.day}</span>
+                        <span className="text-xs text-on-surface-variant">{formattedDate}</span>
+                      </div>
+                      <p className="text-xs text-on-surface-variant/70 mt-0.5">{slot.date}</p>
+                    </div>
+                    <span className="material-symbols-outlined text-on-surface-variant/30 group-hover:text-[#735c00] transition-colors text-[18px]">add_circle</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-[#E5E5E5] shrink-0">
+              <button
+                onClick={() => { setSuggestions(null); setPendingFormData(null); }}
+                className="h-10 px-4 rounded-xl border border-[#E5E5E5] text-sm font-medium text-on-surface-variant hover:bg-gray-50 transition-colors cursor-pointer"
               >
                 Cancelar
-              </button>
-              <button
-                onClick={acceptSuggestion}
-                className="flex-1 h-11 rounded-xl bg-[#735c00] text-white text-sm font-medium hover:bg-[#5a4900] transition-colors cursor-pointer"
-              >
-                Usar este horario
               </button>
             </div>
           </div>

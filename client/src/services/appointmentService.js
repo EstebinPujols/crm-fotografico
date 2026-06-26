@@ -58,9 +58,9 @@ const appointmentService = {
   },
 
   /**
-   * Buscar el siguiente espacio disponible en el calendario.
+   * Buscar espacios disponibles en el calendario.
    * @param {string} [startDate] - Fecha base (YYYY-MM-DD), por defecto hoy
-   * @returns {Promise<{date: string, time: string}>}
+   * @returns {Promise<{slots: Array<{date: string, time: string, day: string}>}>}
    */
   async getNextAvailable(startDate) {
     const params = {};
