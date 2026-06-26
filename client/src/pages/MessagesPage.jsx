@@ -147,9 +147,56 @@ function ImagePreview({ src, onClose }) {
   );
 }
 
+// ─── Lightbox para video ────────────────────────────────────────────────────
+function VideoPreview({ src, onClose }) {
+  const videoRef = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div className="relative max-w-[90vw] max-h-[90vh] flex items-center justify-center" onClick={e => e.stopPropagation()}>
+        <video
+          ref={videoRef}
+          src={src}
+          controls
+          className="max-w-full max-h-[85vh] rounded-lg shadow-2xl"
+        />
+        <div className="absolute top-3 right-3 flex items-center gap-2">
+          <a
+            href={src}
+            download
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-9 h-9 rounded-full bg-black/40 hover:bg-black/60 flex items-center justify-center transition-colors"
+          >
+            <span className="material-symbols-outlined text-white text-[18px]">download</span>
+          </a>
+          <button
+            onClick={onClose}
+            className="w-9 h-9 rounded-full bg-black/40 hover:bg-black/60 flex items-center justify-center transition-colors cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-white text-[18px]">close</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Media renderer ──────────────────────────────────────────────────────────
 function MediaBlock({ media }) {
   const [preview, setPreview] = useState(null);
+  const [videoPreview, setVideoPreview] = useState(null);
+  const [showPlay, setShowPlay] = useState(true);
+  const videoRef = useRef(null);
   if (!media?.url) return null;
   const fullUrl = media.url?.startsWith('http') ? media.url : media.url;
 
@@ -169,9 +216,26 @@ function MediaBlock({ media }) {
   }
   if (media.type === 'video') {
     return (
-      <div className="mt-1.5 max-w-[280px] rounded-lg overflow-hidden border border-[#E5E5E5]">
-        <video controls src={fullUrl} className="w-full max-h-[280px]" preload="metadata" />
-      </div>
+      <>
+        <div className="mt-1.5 max-w-[280px] rounded-lg overflow-hidden border border-[#E5E5E5] relative group cursor-pointer bg-black"
+          onClick={() => setVideoPreview(fullUrl)}>
+          <video ref={videoRef} src={fullUrl} className="w-full max-h-[200px] object-contain" preload="metadata" muted
+            onCanPlay={() => { videoRef.current?.pause(); }}
+            onPlaying={() => setShowPlay(false)}
+            onPause={() => setShowPlay(true)}
+          />
+          {showPlay && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
+              <div className="w-12 h-12 rounded-full bg-[#735c00]/90 flex items-center justify-center shadow-lg">
+                <span className="material-symbols-outlined text-white text-[28px]">play_arrow</span>
+              </div>
+            </div>
+          )}
+        </div>
+        {videoPreview && (
+          <VideoPreview src={videoPreview} onClose={() => setVideoPreview(null)} />
+        )}
+      </>
     );
   }
   if (media.type === 'document') {
