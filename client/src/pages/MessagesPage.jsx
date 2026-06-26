@@ -692,6 +692,7 @@ export default function MessagesPage() {
     if (!selectedPhone) return;
     const id = setInterval(() => {
       loadMsgs(selectedPhone);
+      messageService.markAsRead(selectedPhone).catch(() => {});
     }, 5000);
     return () => clearInterval(id);
   }, [selectedPhone, loadMsgs]);

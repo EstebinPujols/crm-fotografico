@@ -134,21 +134,31 @@ router.get('/stats', async (req, res, next) => {
   try {
     const { data: messages, error } = await db
       .from('whatsapp_messages')
-      .select('direction, phone, created_at');
+      .select('direction, phone, created_at, is_group');
 
     if (error) throw error;
 
+    // Excluir mensajes de grupos y de conversaciones ocultas
+    const { data: hiddenRows } = await db
+      .from('hidden_conversations')
+      .select('phone');
+    const hiddenPhones = new Set((hiddenRows || []).map(h => h.phone));
+
+    const filtered = (messages || []).filter(
+      (m) => !m.is_group && !hiddenPhones.has(m.phone)
+    );
+
     const today = new Date().toISOString().split('T')[0];
-    const todayMessages = (messages || []).filter(
+    const todayMessages = filtered.filter(
       (m) => m.created_at && m.created_at.startsWith(today)
     );
 
-    const unread = readState.getTotalUnread(messages || []);
+    const unread = readState.getTotalUnread(filtered);
 
     res.json({
-      total: messages?.length || 0,
-      entrantes: (messages || []).filter((m) => m.direction === 'entrante').length,
-      salientes: (messages || []).filter((m) => m.direction === 'saliente').length,
+      total: filtered.length,
+      entrantes: filtered.filter((m) => m.direction === 'entrante').length,
+      salientes: filtered.filter((m) => m.direction === 'saliente').length,
       today: todayMessages.length,
       unread,
     });

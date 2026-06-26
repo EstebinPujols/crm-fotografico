@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { getSession } from '../services/authService';
+import messageService from '../services/messageService';
 
 export default function Layout({ children }) {
   const location = useLocation();
@@ -16,6 +17,7 @@ export default function Layout({ children }) {
   ];
 
   const [user, setUser] = useState(null);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // Cargar usuario autenticado al montar el componente
   useEffect(() => {
@@ -30,6 +32,19 @@ export default function Layout({ children }) {
       }
     }
     loadUser();
+  }, []);
+
+  // Polling de mensajes no leídos
+  useEffect(() => {
+    const fetchUnread = async () => {
+      try {
+        const stats = await messageService.getStats();
+        setUnreadCount(stats.unread || 0);
+      } catch (_) {}
+    };
+    fetchUnread();
+    const id = setInterval(fetchUnread, 15000);
+    return () => clearInterval(id);
   }, []);
 
   const isActive = (path) => {
@@ -76,11 +91,18 @@ export default function Layout({ children }) {
                       : 'text-on-surface-variant hover:bg-surface-container-low hover:text-primary'
                     }`}
                 >
-                  <span
-                    className="material-symbols-outlined"
-                    style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}
-                  >
-                    {item.icon}
+                  <span className="relative">
+                    <span
+                      className="material-symbols-outlined"
+                      style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}
+                    >
+                      {item.icon}
+                    </span>
+                    {item.name === 'Messages' && unreadCount > 0 && (
+                      <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </span>
+                    )}
                   </span>
                   <span className="font-label-md">{item.name}</span>
                 </Link>
@@ -110,11 +132,18 @@ export default function Layout({ children }) {
                       : 'text-on-surface-variant hover:bg-surface-container-low hover:text-primary'
                     }`}
                 >
-                  <span
-                    className="material-symbols-outlined text-[20px]"
-                    style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}
-                  >
-                    {item.icon}
+                  <span className="relative">
+                    <span
+                      className="material-symbols-outlined text-[20px]"
+                      style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}
+                    >
+                      {item.icon}
+                    </span>
+                    {item.name === 'Messages' && unreadCount > 0 && (
+                      <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </span>
+                    )}
                   </span>
                   <span className="font-label-md text-sm">{item.name}</span>
                 </Link>
@@ -153,11 +182,18 @@ export default function Layout({ children }) {
                     : 'text-on-surface-variant hover:text-primary'
                   }`}
               >
-                <span
-                  className="material-symbols-outlined text-[24px]"
-                  style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}
-                >
-                  {item.icon}
+                <span className="relative">
+                  <span
+                    className="material-symbols-outlined text-[24px]"
+                    style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}
+                  >
+                    {item.icon}
+                  </span>
+                  {item.name === 'Messages' && unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-2 min-w-[16px] h-[16px] flex items-center justify-center px-[3px] rounded-full bg-red-500 text-white text-[8px] font-bold leading-none">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
                 </span>
                 <span className="font-label-md text-[10px] mt-0.5">{item.name}</span>
               </Link>
