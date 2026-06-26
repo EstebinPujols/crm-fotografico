@@ -447,13 +447,11 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* Loading indicator */}
-      {loading && (
-        <div className="flex items-center justify-center gap-2 py-3 mb-2 text-sm text-on-surface-variant">
-          <span className="material-symbols-outlined animate-spin text-[16px]">sync</span>
-          Cargando citas…
-        </div>
-      )}
+      {/* Loading inline (siempre ocupa espacio, no desplaza) */}
+      <div className={`flex items-center gap-2 py-2 mb-1 text-xs text-on-surface-variant transition-opacity ${loading ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+        <span className={`material-symbols-outlined text-[14px] ${loading ? 'animate-spin' : ''}`}>sync</span>
+        Cargando citas…
+      </div>
 
       {/* Grid */}
       <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
