@@ -272,9 +272,11 @@ function MsgPanel({
             onChange={e => {
               const file = e.target.files?.[0];
               if (file) {
+                const conv = conversations.find(c => c.phone === selectedPhone);
                 const formData = new FormData();
                 formData.append('file', file);
                 formData.append('phone', selectedPhone);
+                if (conv?.client_id) formData.append('client_id', conv.client_id);
                 setSending(true);
                 messageService.sendMedia(formData).then(() => {
                   loadMsgs(selectedPhone);
@@ -523,7 +525,9 @@ export default function MessagesPage() {
     if (!sendText.trim() || !selectedPhone || sending) return;
     setSending(true);
     try {
-      await messageService.send({ phone: selectedPhone, message: sendText.trim(), direction: 'saliente' });
+      const conv = conversations.find(c => c.phone === selectedPhone);
+      const client_id = conv?.client_id || null;
+      await messageService.send({ phone: selectedPhone, message: sendText.trim(), direction: 'saliente', client_id });
       setSendText('');
       await loadMsgs(selectedPhone);
       await loadConvs(false);
