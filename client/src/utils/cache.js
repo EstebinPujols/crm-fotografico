@@ -51,6 +51,14 @@ export function isCacheStale() {
   }
 }
 
+export function clearConversationsCache() {
+  try {
+    localStorage.removeItem(CACHE_KEY_CONVS);
+  } catch {
+    // ignorar
+  }
+}
+
 export function clearMessagesCache(phone) {
   try {
     localStorage.removeItem(CACHE_KEY_MSGS(phone));

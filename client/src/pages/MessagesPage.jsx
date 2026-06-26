@@ -3,7 +3,7 @@ import Button from '../components/Button';
 import CreateClientModal from '../components/CreateClientModal';
 import messageService from '../services/messageService';
 import settingsService from '../services/settingsService';
-import { loadConversationsCache, saveConversationsCache, loadMessagesCache, saveMessagesCache, isCacheStale } from '../utils/cache';
+import { loadConversationsCache, saveConversationsCache, clearConversationsCache, loadMessagesCache, saveMessagesCache, isCacheStale } from '../utils/cache';
 
 // ─── Formateo de teléfonos ───────────────────────────────────────────────────
 function formatPhone(raw) {
@@ -417,13 +417,16 @@ export default function MessagesPage() {
   const messagesEnd = useRef(null);
   const fileRef = useRef(null);
   const resolveRef = useRef(null);
+  const filtersReady = useRef(false);
 
   // ─── Cargar conversaciones ───────────────────────────────────────────────
   const loadConvs = useCallback(async (showLoad) => {
     try {
       if (showLoad) setLoading(true);
-      const cached = loadConversationsCache();
-      if (cached && !isCacheStale() && showLoad) setConversations(cached);
+      if (filtersReady.current) {
+        const cached = loadConversationsCache();
+        if (cached && !isCacheStale() && showLoad) setConversations(cached);
+      }
 
       const res = await messageService.getConversations({ limit: 100, hideGroups: !showGroupMessages, includeHidden: showHidden });
       const convs = res.data || [];
@@ -444,16 +447,27 @@ export default function MessagesPage() {
     } catch (e) { console.error(e); }
   }, []);
 
-  useEffect(() => { loadHidden(); }, [loadHidden]);
-
-  useEffect(() => { loadConvs(true); }, [loadConvs]);
-
-  // ─── Cargar setting de grupos ───────────────────────────────────────
+  // ─── Cargar settings y luego conversaciones ─────────────────────────
   useEffect(() => {
     settingsService.get().then(s => {
       setShowGroupMessages(s.showGroupMessages !== false);
-    }).catch(() => {}).finally(() => setSettingsLoaded(true));
-  }, [showGroupMessages]);
+    }).catch(() => {}).finally(() => {
+      setSettingsLoaded(true);
+      filtersReady.current = true;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    loadHidden();
+    loadConvs(true);
+  }, [settingsLoaded, loadHidden, loadConvs]);
+
+  // ─── Limpiar caché al cambiar filtros ──────────────────────────────
+  useEffect(() => {
+    if (!filtersReady.current) return;
+    clearConversationsCache();
+  }, [showGroupMessages, showHidden]);
 
   // ─── Cargar mensajes ────────────────────────────────────────────────────
   const loadMsgs = useCallback(async (phone) => {
@@ -466,7 +480,7 @@ export default function MessagesPage() {
       setMessages(msgs);
       saveMessagesCache(phone, msgs);
     } catch (e) { console.error(e); }
-  }, [showGroupMessages]);
+  }, []);
 
   // ─── Seleccionar conversación ────────────────────────────────────────────
   const handleSelect = useCallback((conv) => {
@@ -483,15 +497,22 @@ export default function MessagesPage() {
     loadMsgs(conv.phone);
   }, [loadMsgs]);
 
-  // ─── Polling ────────────────────────────────────────────────────────────
+  // ─── Polling: conversaciones (siempre) ──────────────────────────────
+  useEffect(() => {
+    const id = setInterval(() => {
+      loadConvs(false);
+    }, 5000);
+    return () => clearInterval(id);
+  }, [loadConvs]);
+
+  // ─── Polling: mensajes (solo con conversación abierta) ─────────────
   useEffect(() => {
     if (!selectedPhone) return;
     const id = setInterval(() => {
       loadMsgs(selectedPhone);
-      loadConvs(false);
     }, 5000);
     return () => clearInterval(id);
-  }, [selectedPhone, loadMsgs, loadConvs]);
+  }, [selectedPhone, loadMsgs]);
 
   useEffect(() => { messagesEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
   useEffect(() => { if (resolving && resolveRef.current) resolveRef.current.focus(); }, [resolving]);
