@@ -35,6 +35,77 @@ function formatTime(dateStr) {
   return d.toLocaleDateString('es', { day: '2-digit', month: '2-digit' });
 }
 
+// ─── Reproductor de nota de voz ─────────────────────────────────────────────
+function VoiceNote({ src }) {
+  const audioRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [current, setCurrent] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+
+  const fmt = (s) => {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
+
+  const toggle = () => {
+    if (!audioRef.current) return;
+    if (playing) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play();
+    }
+  };
+
+  const seek = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const pct = Math.max(0, Math.min(1, x / rect.width));
+    if (audioRef.current) {
+      audioRef.current.currentTime = pct * duration;
+    }
+  };
+
+  return (
+    <div className="mt-1.5 max-w-[260px] min-w-[200px]">
+      <audio
+        ref={audioRef}
+        src={src}
+        preload="metadata"
+        onLoadedMetadata={() => { setDuration(audioRef.current?.duration || 0); setLoaded(true); }}
+        onTimeUpdate={() => setCurrent(audioRef.current?.currentTime || 0)}
+        onEnded={() => setPlaying(false)}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+      />
+      <div className="flex items-center gap-2.5">
+        <button
+          onClick={toggle}
+          className="w-9 h-9 rounded-full bg-[#735c00] hover:bg-[#5a4900] flex items-center justify-center shrink-0 transition-colors active:scale-95"
+        >
+          <span className="material-symbols-outlined text-white text-[18px]">{playing ? 'pause' : 'play_arrow'}</span>
+        </button>
+        <div className="flex-1 min-w-0">
+          <div
+            className="relative h-1.5 bg-[#E5E5E5] rounded-full cursor-pointer group"
+            onClick={seek}
+          >
+            <div
+              className="absolute inset-y-0 left-0 bg-[#D4AF37] rounded-full transition-all duration-100"
+              style={{ width: `${duration ? (current / duration) * 100 : 0}%` }}
+            />
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-[10px] text-on-surface-variant font-medium">{fmt(current)}</span>
+            <span className="text-[10px] text-on-surface-variant/60">{loaded ? fmt(duration) : '--:--'}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Media renderer ──────────────────────────────────────────────────────────
 function MediaBlock({ media }) {
   if (!media?.url) return null;
@@ -49,7 +120,7 @@ function MediaBlock({ media }) {
     );
   }
   if (media.type === 'audio') {
-    return <audio controls src={fullUrl} className="mt-1.5 w-full max-w-[220px] h-9" preload="none" />;
+    return <VoiceNote src={fullUrl} />;
   }
   if (media.type === 'video') {
     return (
