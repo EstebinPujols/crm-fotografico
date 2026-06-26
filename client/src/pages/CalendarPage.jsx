@@ -276,6 +276,12 @@ export default function CalendarPage() {
 
   const days = buildDays(year, month);
   const isToday = (d, cur) => cur && d === today.getDate() && month === today.getMonth() && year === today.getFullYear();
+  const isPast = (d, cur) => {
+    if (!cur) return true;
+    const date = new Date(year, month, d);
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    return date < todayStart;
+  };
 
   // ─── Carga de datos ─────────────────────────────────────────────────────────
 
@@ -353,6 +359,7 @@ export default function CalendarPage() {
   const openCreate = (day) => {
     const d = day || selected || today.getDate();
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    if (isPast(d, true)) return;
     setModal({ open: true, mode: 'create', data: null, defaultDate: dateStr, defaultTime: null });
   };
 
@@ -500,7 +507,7 @@ export default function CalendarPage() {
                     >
                       {cell.d}
                     </span>
-                    {cell.cur && (
+                    {cell.cur && !isPast(cell.d, true) && (
                       <button
                         onClick={(e) => { e.stopPropagation(); openCreate(cell.d); }}
                         className="material-symbols-outlined text-[12px] text-on-surface-variant/40 hover:text-[#735c00] hover:opacity-100 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
@@ -544,7 +551,7 @@ export default function CalendarPage() {
                   : selected ? 'Sin citas' : 'Haz clic en una fecha'}
               </p>
             </div>
-            {selected && (
+            {selected && !isPast(selected, true) && (
               <button
                 onClick={() => openCreate(selected)}
                 className="w-8 h-8 rounded-full flex items-center justify-center text-on-surface-variant hover:text-[#735c00] hover:bg-[#fed65b]/20 transition-all cursor-pointer"
@@ -610,7 +617,7 @@ export default function CalendarPage() {
                 <p className="text-sm text-on-surface-variant">
                   {selected ? 'No hay citas este día' : 'Selecciona una fecha'}
                 </p>
-                {selected && (
+                {selected && !isPast(selected, true) && (
                   <button
                     onClick={() => openCreate(selected)}
                     className="mt-3 text-xs font-semibold text-[#735c00] hover:underline cursor-pointer flex items-center gap-1"
